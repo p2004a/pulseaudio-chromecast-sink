@@ -1,7 +1,6 @@
 #include <cassert>
 #include <chrono>
 #include <functional>
-#include <iostream>
 
 #include <avahi-common/simple-watch.h>
 
@@ -60,11 +59,9 @@ struct AvahiWatch {
     AvahiWatch(boost::asio::io_service::strand & strand_, boost::asio::io_service &io_service, int fd, AvahiWatchCallback callback_, void * userdata_)
             : socket(io_service), callback(callback_), userdata(userdata_), dead(false), in_callback(false), strand(strand_) {
         socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), fd);
-        std::cerr << "create watch" << std::endl;
     }
 
     ~AvahiWatch() {
-        std::cerr << "destroy watch" << std::endl;
         socket.cancel();
     }
 
@@ -108,11 +105,9 @@ struct AvahiTimeout {
 
     AvahiTimeout(boost::asio::io_service::strand & strand_, boost::asio::io_service &io_service, AvahiTimeoutCallback callback_, void * userdata_)
             : timer(io_service), callback(callback_), userdata(userdata_), dead(false), strand(strand_) {
-        std::cerr << "create timer" << std::endl;
     }
 
     ~AvahiTimeout() {
-        std::cerr << "destroy timer" << std::endl;
         timer.cancel();
     }
 
