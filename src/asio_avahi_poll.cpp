@@ -22,8 +22,7 @@ struct AvahiWatch {
         if (dead) return;
 
         event_happened = event;
-        if (error) {
-            // TODO: add logging
+        if (error && error != boost::asio::error::eof) {
             event_happened = static_cast<AvahiWatchEvent>(static_cast<int>(event_happened) |
                                                           static_cast<int>(AVAHI_WATCH_ERR));
         }
