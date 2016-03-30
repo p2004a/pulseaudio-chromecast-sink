@@ -4,8 +4,8 @@
 
 #include <avahi-common/simple-watch.h>
 
-#include <boost/asio/io_service.hpp>
 #include <boost/asio/generic/stream_protocol.hpp>
+#include <boost/asio/io_service.hpp>
 #include <boost/asio/steady_timer.hpp>
 
 #include "asio_avahi_poll.h"
@@ -15,16 +15,17 @@ struct AvahiWatch {
     boost::asio::generic::stream_protocol::socket socket;
     AvahiWatchEvent event_happened;
     AvahiWatchCallback callback;
-    void * userdata;
+    void *userdata;
     bool dead, updated, in_callback;
 
-    void event_handler(AvahiWatchEvent event, const boost::system::error_code& error, std::size_t) {
+    void event_handler(AvahiWatchEvent event, const boost::system::error_code &error, std::size_t) {
         if (dead) return;
 
         event_happened = event;
         if (error) {
             // TODO: add logging
-            event_happened = static_cast<AvahiWatchEvent>(static_cast<int>(event_happened) | static_cast<int>(AVAHI_WATCH_ERR));
+            event_happened = static_cast<AvahiWatchEvent>(static_cast<int>(event_happened) |
+                                                          static_cast<int>(AVAHI_WATCH_ERR));
         }
         updated = false;
         in_callback = true;
@@ -44,20 +45,26 @@ struct AvahiWatch {
         assert(!dead);
         using namespace std::placeholders;
         if (events & AVAHI_WATCH_IN) {
-            socket.async_read_some(boost::asio::null_buffers(), strand.wrap(std::bind(&AvahiWatch::event_handler, this, AVAHI_WATCH_IN, _1, _2)));
+            socket.async_read_some(boost::asio::null_buffers(),
+                                   strand.wrap(std::bind(&AvahiWatch::event_handler, this,
+                                                         AVAHI_WATCH_IN, _1, _2)));
         }
         if (events & AVAHI_WATCH_OUT) {
-            socket.async_write_some(boost::asio::null_buffers(), strand.wrap(std::bind(&AvahiWatch::event_handler, this, AVAHI_WATCH_OUT, _1, _2)));
+            socket.async_write_some(boost::asio::null_buffers(),
+                                    strand.wrap(std::bind(&AvahiWatch::event_handler, this,
+                                                          AVAHI_WATCH_OUT, _1, _2)));
         }
     }
 
   public:
-    boost::asio::io_service::strand & strand;
+    boost::asio::io_service::strand &strand;
 
     AvahiWatch(const AvahiWatch &) = delete;
 
-    AvahiWatch(boost::asio::io_service::strand & strand_, boost::asio::io_service &io_service, int fd, AvahiWatchCallback callback_, void * userdata_)
-            : socket(io_service), callback(callback_), userdata(userdata_), dead(false), in_callback(false), strand(strand_) {
+    AvahiWatch(boost::asio::io_service::strand &strand_, boost::asio::io_service &io_service,
+               int fd, AvahiWatchCallback callback_, void *userdata_)
+            : socket(io_service), callback(callback_), userdata(userdata_), dead(false),
+              in_callback(false), strand(strand_) {
         socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), fd);
     }
 
@@ -90,22 +97,23 @@ struct AvahiTimeout {
   private:
     boost::asio::steady_timer timer;
     AvahiTimeoutCallback callback;
-    void * userdata;
+    void *userdata;
     bool dead;
 
-    void expired(const boost::system::error_code& error) {
+    void expired(const boost::system::error_code &error) {
         if (dead || error) return;
         callback(this, userdata);
     }
 
   public:
-    boost::asio::io_service::strand & strand;
+    boost::asio::io_service::strand &strand;
 
     AvahiTimeout(const AvahiTimeout &) = delete;
 
-    AvahiTimeout(boost::asio::io_service::strand & strand_, boost::asio::io_service &io_service, AvahiTimeoutCallback callback_, void * userdata_)
-            : timer(io_service), callback(callback_), userdata(userdata_), dead(false), strand(strand_) {
-    }
+    AvahiTimeout(boost::asio::io_service::strand &strand_, boost::asio::io_service &io_service,
+                 AvahiTimeoutCallback callback_, void *userdata_)
+            : timer(io_service), callback(callback_), userdata(userdata_), dead(false),
+              strand(strand_) {}
 
     ~AvahiTimeout() {
         timer.cancel();
@@ -119,10 +127,9 @@ struct AvahiTimeout {
         }
 
         timer.expires_at(boost::asio::steady_timer::time_point(
-                std::chrono::seconds(tv->tv_sec) +
-                std::chrono::microseconds(tv->tv_usec)
-        ));
-        timer.async_wait(strand.wrap(std::bind(&AvahiTimeout::expired, this, std::placeholders::_1)));
+                std::chrono::seconds(tv->tv_sec) + std::chrono::microseconds(tv->tv_usec)));
+        timer.async_wait(
+                strand.wrap(std::bind(&AvahiTimeout::expired, this, std::placeholders::_1)));
     }
 
     void free() {
@@ -132,7 +139,8 @@ struct AvahiTimeout {
     }
 };
 
-AvahiWatch *AsioAvahiPoll::watch_new(const AvahiPoll *api, int fd, AvahiWatchEvent event, AvahiWatchCallback callback, void * userdata) {
+AvahiWatch *AsioAvahiPoll::watch_new(const AvahiPoll *api, int fd, AvahiWatchEvent event,
+                                     AvahiWatchCallback callback, void *userdata) {
     auto poll = static_cast<AsioAvahiPoll *>(api->userdata);
     assert(poll->strand.running_in_this_thread());
     auto watch = new AvahiWatch(poll->strand, poll->io_service, fd, callback, userdata);
@@ -155,7 +163,8 @@ void AsioAvahiPoll::watch_free(AvahiWatch *w) {
     w->free();
 }
 
-AvahiTimeout *AsioAvahiPoll::timeout_new(const AvahiPoll *api, const struct timeval *tv, AvahiTimeoutCallback callback, void *userdata) {
+AvahiTimeout *AsioAvahiPoll::timeout_new(const AvahiPoll *api, const struct timeval *tv,
+                                         AvahiTimeoutCallback callback, void *userdata) {
     auto poll = static_cast<AsioAvahiPoll *>(api->userdata);
     assert(poll->strand.running_in_this_thread());
     auto timer = new AvahiTimeout(poll->strand, poll->io_service, callback, userdata);
@@ -173,7 +182,8 @@ void AsioAvahiPoll::timeout_free(AvahiTimeout *t) {
     t->free();
 }
 
-AsioAvahiPoll::AsioAvahiPoll(boost::asio::io_service &io_service_) : io_service(io_service_), strand(io_service) {
+AsioAvahiPoll::AsioAvahiPoll(boost::asio::io_service &io_service_)
+        : io_service(io_service_), strand(io_service) {
     avahi_poll.userdata = this;
     avahi_poll.watch_new = watch_new;
     avahi_poll.watch_update = watch_update;

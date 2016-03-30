@@ -1,0 +1,16 @@
+---
+BasedOnStyle: Google
+---
+Language: Cpp
+AccessModifierOffset: -2
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortFunctionsOnASingleLine: Empty
+ColumnLimit: 100
+ConstructorInitializerAllOnOneLineOrOnePerLine: false
+ConstructorInitializerIndentWidth: 8
+ContinuationIndentWidth: 8
+DerivePointerAlignment: false
+IndentWidth: 4
+PointerAlignment: Right
+Standard: Cpp11
+# SpaceAfterTemplateKeyword: false
