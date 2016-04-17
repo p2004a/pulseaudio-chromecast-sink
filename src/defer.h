@@ -6,11 +6,11 @@ template <typename F>
 class defer_finalizer {
   public:
     template <typename T>
-    defer_finalizer(T &&f_) : f(std::forward<T>(f_)), moved(false) {}
+    defer_finalizer(T&& f_) : f(std::forward<T>(f_)), moved(false) {}
 
-    defer_finalizer(const defer_finalizer &) = delete;
+    defer_finalizer(const defer_finalizer&) = delete;
 
-    defer_finalizer(defer_finalizer &&other) : f(std::move(other.f)), moved(other.moved) {
+    defer_finalizer(defer_finalizer&& other) : f(std::move(other.f)), moved(other.moved) {
         other.moved = true;
     }
 
@@ -26,7 +26,7 @@ class defer_finalizer {
 class deferrer {
   public:
     template <typename F>
-    defer_finalizer<F> operator<<(F &&f) {
+    defer_finalizer<F> operator<<(F&& f) {
         return defer_finalizer<F>(std::forward<F>(f));
     }
 };
