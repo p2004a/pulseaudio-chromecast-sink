@@ -11,13 +11,43 @@
 #include "asio_avahi_poll.h"
 
 struct AvahiWatch {
-  private:
-    boost::asio::generic::stream_protocol::socket socket;
-    AvahiWatchEvent event_happened;
-    AvahiWatchCallback callback;
-    void *userdata;
-    bool dead, updated, in_callback;
+  public:
+    AvahiWatch(const AvahiWatch &) = delete;
 
+    AvahiWatch(boost::asio::io_service::strand &strand_, boost::asio::io_service &io_service,
+               int fd, AvahiWatchCallback callback_, void *userdata_)
+            : socket(io_service), callback(callback_), userdata(userdata_), dead(false),
+              in_callback(false), strand(strand_) {
+        socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), fd);
+    }
+
+    ~AvahiWatch() {
+        socket.cancel();
+    }
+
+    void update(AvahiWatchEvent events) {
+        assert(!dead);
+        updated = true;
+        socket.cancel();
+        start_monitor(events);
+    }
+
+    AvahiWatchEvent get_events() const {
+        assert(!dead);
+        return event_happened;
+    }
+
+    void free() {
+        assert(!dead);
+        dead = true;
+        if (!in_callback) {
+            delete this;
+        }
+    }
+
+    boost::asio::io_service::strand &strand;
+
+  private:
     void event_handler(AvahiWatchEvent event, const boost::system::error_code &error, std::size_t) {
         if (dead) return;
 
@@ -55,55 +85,14 @@ struct AvahiWatch {
         }
     }
 
-  public:
-    boost::asio::io_service::strand &strand;
-
-    AvahiWatch(const AvahiWatch &) = delete;
-
-    AvahiWatch(boost::asio::io_service::strand &strand_, boost::asio::io_service &io_service,
-               int fd, AvahiWatchCallback callback_, void *userdata_)
-            : socket(io_service), callback(callback_), userdata(userdata_), dead(false),
-              in_callback(false), strand(strand_) {
-        socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), fd);
-    }
-
-    ~AvahiWatch() {
-        socket.cancel();
-    }
-
-    void update(AvahiWatchEvent events) {
-        assert(!dead);
-        updated = true;
-        socket.cancel();
-        start_monitor(events);
-    }
-
-    AvahiWatchEvent get_events() const {
-        assert(!dead);
-        return event_happened;
-    }
-
-    void free() {
-        assert(!dead);
-        dead = true;
-        if (!in_callback) {
-            delete this;
-        }
-    }
+    boost::asio::generic::stream_protocol::socket socket;
+    AvahiWatchEvent event_happened;
+    AvahiWatchCallback callback;
+    void *userdata;
+    bool dead, updated, in_callback;
 };
 
 struct AvahiTimeout {
-  private:
-    boost::asio::steady_timer timer;
-    AvahiTimeoutCallback callback;
-    void *userdata;
-    bool dead;
-
-    void expired(const boost::system::error_code &error) {
-        if (dead || error) return;
-        callback(this, userdata);
-    }
-
   public:
     boost::asio::io_service::strand &strand;
 
@@ -136,6 +125,17 @@ struct AvahiTimeout {
         dead = true;
         delete this;
     }
+
+  private:
+    void expired(const boost::system::error_code &error) {
+        if (dead || error) return;
+        callback(this, userdata);
+    }
+
+    boost::asio::steady_timer timer;
+    AvahiTimeoutCallback callback;
+    void *userdata;
+    bool dead;
 };
 
 AvahiWatch *AsioAvahiPoll::watch_new(const AvahiPoll *api, int fd, AvahiWatchEvent event,

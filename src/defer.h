@@ -4,9 +4,6 @@
 
 template <typename F>
 class defer_finalizer {
-    F f;
-    bool moved;
-
   public:
     template <typename T>
     defer_finalizer(T &&f_) : f(std::forward<T>(f_)), moved(false) {}
@@ -20,6 +17,10 @@ class defer_finalizer {
     ~defer_finalizer() {
         if (!moved) f();
     }
+
+  private:
+    F f;
+    bool moved;
 };
 
 class deferrer {
