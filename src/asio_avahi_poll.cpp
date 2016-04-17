@@ -16,8 +16,8 @@ struct AvahiWatch {
 
     AvahiWatch(boost::asio::io_service::strand& strand_, boost::asio::io_service& io_service,
                int fd, AvahiWatchCallback callback_, void* userdata_)
-            : socket(io_service), callback(callback_), userdata(userdata_), dead(false),
-              in_callback(false), strand(strand_) {
+            : strand(strand_), socket(io_service), callback(callback_), userdata(userdata_),
+              dead(false), in_callback(false) {
         socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), fd);
     }
 
@@ -94,14 +94,12 @@ struct AvahiWatch {
 
 struct AvahiTimeout {
   public:
-    boost::asio::io_service::strand& strand;
-
     AvahiTimeout(const AvahiTimeout&) = delete;
 
     AvahiTimeout(boost::asio::io_service::strand& strand_, boost::asio::io_service& io_service,
                  AvahiTimeoutCallback callback_, void* userdata_)
-            : timer(io_service), callback(callback_), userdata(userdata_), dead(false),
-              strand(strand_) {}
+            : strand(strand_), timer(io_service), callback(callback_), userdata(userdata_),
+              dead(false) {}
 
     ~AvahiTimeout() {
         timer.cancel();
@@ -125,6 +123,8 @@ struct AvahiTimeout {
         dead = true;
         delete this;
     }
+
+    boost::asio::io_service::strand& strand;
 
   private:
     void expired(const boost::system::error_code& error) {
