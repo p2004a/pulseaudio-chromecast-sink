@@ -17,7 +17,8 @@ add_compile_options(${avahi-client_CFLAGS_OTHER})
 
 set(SOURCE_FILES src/main.cpp
                  src/defer.cpp
-                 src/asio_avahi_poll.cpp)
+                 src/asio_avahi_poll.cpp
+                 src/util.cpp)
 
 add_executable(prog ${SOURCE_FILES})
 target_link_libraries(prog ${Boost_LIBRARIES} ${avahi-client_LIBRARIES})
