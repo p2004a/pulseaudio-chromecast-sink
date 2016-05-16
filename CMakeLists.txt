@@ -25,3 +25,6 @@ set(SOURCE_FILES src/main.cpp
 
 add_executable(prog ${SOURCE_FILES})
 target_link_libraries(prog ${Boost_LIBRARIES} ${avahi-client_LIBRARIES})
+
+add_executable(pa_test src/pa_test.cpp src/defer.cpp)
+target_link_libraries(pa_test ${Boost_LIBRARIES} ${libpulse_LIBRARIES})
