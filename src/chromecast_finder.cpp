@@ -61,14 +61,18 @@ void ChromecastFinder::start_discovery() {
 
 void ChromecastFinder::client_callback(AvahiClient* c, AvahiClientState state, void* data) {
     ChromecastFinder* cf = static_cast<ChromecastFinder*>(data);
+    if (cf->avahi_client != c) {
+        cf->avahi_client = c;
+    }
 
     assert(c);
 
     switch (state) {
         case AVAHI_CLIENT_S_RUNNING:
-            cf->avahi_browser = avahi_service_browser_new(
-                    c, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "_googlecast._tcp", "local",
-                    static_cast<AvahiLookupFlags>(0), ChromecastFinder::browse_callback, cf);
+            cf->avahi_browser = avahi_service_browser_new(cf->avahi_client, AVAHI_IF_UNSPEC,
+                                                          AVAHI_PROTO_UNSPEC, "_googlecast._tcp",
+                                                          "local", static_cast<AvahiLookupFlags>(0),
+                                                          ChromecastFinder::browse_callback, cf);
             if (!cf->avahi_browser) {
                 throw std::runtime_error("Failed to create service browser: " +
                                          cf->get_avahi_error());
