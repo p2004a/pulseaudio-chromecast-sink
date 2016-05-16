@@ -27,7 +27,6 @@ struct AvahiWatch {
 
     void update(AvahiWatchEvent events) {
         assert(!dead);
-        updated = true;
         socket.cancel();
         start_monitor(events);
     }
@@ -50,22 +49,19 @@ struct AvahiWatch {
   private:
     void event_handler(AvahiWatchEvent event, const boost::system::error_code& error, std::size_t) {
         if (dead) return;
+        start_monitor(event);
 
         event_happened = event;
         if (error && error != boost::asio::error::eof) {
             event_happened = static_cast<AvahiWatchEvent>(static_cast<int>(event_happened) |
                                                           static_cast<int>(AVAHI_WATCH_ERR));
         }
-        updated = false;
         in_callback = true;
         callback(this, socket.native_handle(), event_happened, userdata);
         in_callback = false;
         if (dead) {
             delete this;
         } else {
-            if (!updated) {
-                start_monitor(event);
-            }
             event_happened = static_cast<AvahiWatchEvent>(0);
         }
     }
@@ -89,7 +85,7 @@ struct AvahiWatch {
     AvahiWatchEvent event_happened;
     AvahiWatchCallback callback;
     void* userdata;
-    bool dead, updated, in_callback;
+    bool dead, in_callback;
 };
 
 struct AvahiTimeout {
