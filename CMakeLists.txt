@@ -9,9 +9,11 @@ set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -Ofast")
 find_package(Boost 1.58 REQUIRED COMPONENTS thread system iostreams)
 find_package(PkgConfig REQUIRED)
 pkg_search_module(avahi-client REQUIRED avahi-client)
+pkg_search_module(libpulse REQUIRED libpulse)
 
 include_directories(${Boost_INCLUDE_DIRS}
-                    ${avahi-client_INCLUDE_DIRS})
+                    ${avahi-client_INCLUDE_DIRS}
+                    ${libpulse_INCLUDE_DIRS})
 
 add_compile_options(${avahi-client_CFLAGS_OTHER})
 
