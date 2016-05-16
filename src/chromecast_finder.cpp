@@ -51,18 +51,11 @@ void ChromecastFinder::stop() {
 
 void ChromecastFinder::start_discovery() {
     int error;
-    avahi_client = avahi_client_new(poll.get_pool(), static_cast<AvahiClientFlags>(0),
+    avahi_client = avahi_client_new(poll.get_pool(), AVAHI_CLIENT_NO_FAIL,
                                     ChromecastFinder::client_callback, this, &error);
     if (!avahi_client) {
         throw std::runtime_error("Couldn't create avahi client: " +
                                  std::string(avahi_strerror(error)));
-    }
-
-    avahi_browser = avahi_service_browser_new(
-            avahi_client, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "_googlecast._tcp", "local",
-            static_cast<AvahiLookupFlags>(0), ChromecastFinder::browse_callback, this);
-    if (!avahi_browser) {
-        throw std::runtime_error("Failed to create service browser: " + get_avahi_error());
     }
 }
 
@@ -71,9 +64,32 @@ void ChromecastFinder::client_callback(AvahiClient* c, AvahiClientState state, v
 
     assert(c);
 
-    /* Called whenever the client or server state changes */
-    if (state == AVAHI_CLIENT_FAILURE) {
-        throw std::runtime_error("Server connection failure: " + cf->get_avahi_error());
+    switch (state) {
+        case AVAHI_CLIENT_S_RUNNING:
+            cf->avahi_browser = avahi_service_browser_new(
+                    c, AVAHI_IF_UNSPEC, AVAHI_PROTO_UNSPEC, "_googlecast._tcp", "local",
+                    static_cast<AvahiLookupFlags>(0), ChromecastFinder::browse_callback, cf);
+            if (!cf->avahi_browser) {
+                throw std::runtime_error("Failed to create service browser: " +
+                                         cf->get_avahi_error());
+            }
+            break;
+
+        case AVAHI_CLIENT_S_REGISTERING:
+        case AVAHI_CLIENT_S_COLLISION: break;
+
+        case AVAHI_CLIENT_CONNECTING:
+            std::cerr << "Connecting to Avahi server..." << std::endl;
+            break;
+
+        case AVAHI_CLIENT_FAILURE:
+            if (avahi_client_errno(cf->avahi_client) == AVAHI_ERR_DISCONNECTED) {
+                cf->stop();
+                cf->start_discovery();
+            } else {
+                throw std::runtime_error("Server connection failure: " + cf->get_avahi_error());
+            }
+            break;
     }
 }
 
