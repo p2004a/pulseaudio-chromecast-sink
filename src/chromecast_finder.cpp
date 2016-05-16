@@ -31,6 +31,10 @@ ChromecastFinder::~ChromecastFinder() {
 
 void ChromecastFinder::stop() {
     auto closer = [this]() {
+        while (!resolvers.empty()) {
+            auto resolverId = resolvers.begin()->first;
+            remove_resolver(resolverId);
+        }
         if (avahi_browser != nullptr) {
             avahi_service_browser_free(avahi_browser);
         }
