@@ -17,7 +17,7 @@ struct AvahiWatch {
     AvahiWatch(boost::asio::io_service::strand& strand_, boost::asio::io_service& io_service,
                int fd, AvahiWatchCallback callback_, void* userdata_)
             : strand(strand_), socket(io_service), callback(callback_), userdata(userdata_),
-              dead(false), in_callback(false) {
+              dead(false), in_async(0), in_callback(false) {
         // We have to duplicate file descriptor because socket takes ownership of it
         // and we don't want it to do so.
         int new_fd = dup(fd);
@@ -26,10 +26,6 @@ struct AvahiWatch {
                                      std::string(strerror(errno)));
         }
         socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), fd);
-    }
-
-    ~AvahiWatch() {
-        socket.cancel();
     }
 
     void update(AvahiWatchEvent events) {
@@ -46,7 +42,8 @@ struct AvahiWatch {
     void free() {
         assert(!dead);
         dead = true;
-        if (!in_callback) {
+        socket.cancel();
+        if (!in_callback && in_async == 0) {
             delete this;
         }
     }
@@ -55,7 +52,12 @@ struct AvahiWatch {
 
   private:
     void event_handler(AvahiWatchEvent event, const boost::system::error_code& error, std::size_t) {
-        if (dead) return;
+        --in_async;
+        if (dead && in_async == 0) {
+            delete this;
+            return;
+        }
+
         if (error == boost::asio::error::operation_aborted) return;
         start_monitor(event);
 
@@ -78,11 +80,13 @@ struct AvahiWatch {
         assert(!dead);
         using namespace std::placeholders;
         if (events & AVAHI_WATCH_IN) {
+            ++in_async;
             socket.async_read_some(boost::asio::null_buffers(),
                                    strand.wrap(std::bind(&AvahiWatch::event_handler, this,
                                                          AVAHI_WATCH_IN, _1, _2)));
         }
         if (events & AVAHI_WATCH_OUT) {
+            ++in_async;
             socket.async_write_some(boost::asio::null_buffers(),
                                     strand.wrap(std::bind(&AvahiWatch::event_handler, this,
                                                           AVAHI_WATCH_OUT, _1, _2)));
@@ -94,6 +98,7 @@ struct AvahiWatch {
     AvahiWatchCallback callback;
     void* userdata;
     bool dead, in_callback;
+    int in_async;
 };
 
 struct AvahiTimeout {
@@ -103,11 +108,7 @@ struct AvahiTimeout {
     AvahiTimeout(boost::asio::io_service::strand& strand_, boost::asio::io_service& io_service,
                  AvahiTimeoutCallback callback_, void* userdata_)
             : strand(strand_), timer(io_service), callback(callback_), userdata(userdata_),
-              dead(false) {}
-
-    ~AvahiTimeout() {
-        timer.cancel();
-    }
+              dead(false), in_async_wait(0) {}
 
     void update(const struct timeval* tv) {
         assert(!dead);
@@ -118,6 +119,7 @@ struct AvahiTimeout {
 
         timer.expires_at(boost::asio::steady_timer::time_point(
                 std::chrono::seconds(tv->tv_sec) + std::chrono::microseconds(tv->tv_usec)));
+        ++in_async_wait;
         timer.async_wait(
                 strand.wrap(std::bind(&AvahiTimeout::expired, this, std::placeholders::_1)));
     }
@@ -125,14 +127,22 @@ struct AvahiTimeout {
     void free() {
         assert(!dead);
         dead = true;
-        delete this;
+        timer.cancel();
+        if (in_async_wait == 0) {
+            delete this;
+        }
     }
 
     boost::asio::io_service::strand& strand;
 
   private:
     void expired(const boost::system::error_code& error) {
-        if (dead || error) return;
+        --in_async_wait;
+        if (dead && in_async_wait == 0) {
+            delete this;
+        }
+
+        if (error) return;
         callback(this, userdata);
     }
 
@@ -140,6 +150,7 @@ struct AvahiTimeout {
     AvahiTimeoutCallback callback;
     void* userdata;
     bool dead;
+    int in_async_wait;
 };
 
 AvahiWatch* AsioAvahiPoll::watch_new(const AvahiPoll* api, int fd, AvahiWatchEvent event,

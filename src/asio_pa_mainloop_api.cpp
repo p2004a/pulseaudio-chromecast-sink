@@ -17,8 +17,8 @@ struct pa_io_event {
     pa_io_event(const pa_io_event&) = delete;
 
     pa_io_event(AsioPulseAudioMainloop* mainloop_, int fd, pa_io_event_cb_t cb, void* userdata_)
-            : mainloop(mainloop_), socket(mainloop->io_service), dead(false), callback(cb),
-              userdata(userdata_), destroy_callback(nullptr) {
+            : mainloop(mainloop_), socket(mainloop->io_service), dead(false), in_async(0),
+              callback(cb), userdata(userdata_), destroy_callback(nullptr) {
         // We have to duplicate file descriptor because socket takes ownership of it
         // and we don't want it to do so.
         int new_fd = dup(fd);
@@ -30,7 +30,6 @@ struct pa_io_event {
     }
 
     ~pa_io_event() {
-        socket.cancel();
         if (destroy_callback) {
             destroy_callback(&mainloop->api, this, userdata);
         }
@@ -45,7 +44,10 @@ struct pa_io_event {
     void free() {
         assert(!dead);
         dead = true;
-        delete this;
+        socket.cancel();
+        if (in_async == 0) {
+            delete this;
+        }
     }
 
     void set_destroy(pa_io_event_destroy_cb_t cb) {
@@ -58,7 +60,12 @@ struct pa_io_event {
   private:
     void event_handler(pa_io_event_flags_t event, const boost::system::error_code& error,
                        std::size_t) {
-        if (dead) return;
+        --in_async;
+        if (dead && in_async == 0) {
+            delete this;
+            return;
+        }
+
         if (error == boost::asio::error::operation_aborted) return;
         start_monitor(event);
 
@@ -73,12 +80,14 @@ struct pa_io_event {
         assert(!dead);
         using namespace std::placeholders;
         if (events & PA_IO_EVENT_INPUT) {
+            ++in_async;
             socket.async_read_some(
                     boost::asio::null_buffers(),
                     mainloop->strand.wrap(std::bind(&pa_io_event::event_handler, this,
                                                     PA_IO_EVENT_INPUT, _1, _2)));
         }
         if (events & PA_IO_EVENT_OUTPUT) {
+            ++in_async;
             socket.async_write_some(
                     boost::asio::null_buffers(),
                     mainloop->strand.wrap(std::bind(&pa_io_event::event_handler, this,
@@ -88,6 +97,7 @@ struct pa_io_event {
 
     boost::asio::generic::stream_protocol::socket socket;
     bool dead;
+    int in_async;
     pa_io_event_cb_t callback;
     void* userdata;
     pa_io_event_destroy_cb_t destroy_callback;
@@ -98,11 +108,10 @@ struct pa_time_event {
     pa_time_event(const pa_time_event&) = delete;
 
     pa_time_event(AsioPulseAudioMainloop* mainloop_, pa_time_event_cb_t cb, void* userdata_)
-            : mainloop(mainloop_), timer(mainloop->io_service), dead(false), callback(cb),
-              userdata(userdata_), destroy_callback(nullptr) {}
+            : mainloop(mainloop_), timer(mainloop->io_service), dead(false), in_async_wait(0),
+              callback(cb), userdata(userdata_), destroy_callback(nullptr) {}
 
     ~pa_time_event() {
-        timer.cancel();
         if (destroy_callback) {
             destroy_callback(&mainloop->api, this, userdata);
         }
@@ -119,6 +128,7 @@ struct pa_time_event {
         timer.expires_at(
                 boost::asio::steady_timer::time_point(std::chrono::seconds(deadline.tv_sec) +
                                                       std::chrono::microseconds(deadline.tv_usec)));
+        ++in_async_wait;
         timer.async_wait(mainloop->strand.wrap(
                 std::bind(&pa_time_event::expired, this, std::placeholders::_1)));
     }
@@ -126,7 +136,10 @@ struct pa_time_event {
     void free() {
         assert(!dead);
         dead = true;
-        delete this;
+        timer.cancel();
+        if (in_async_wait == 0) {
+            delete this;
+        }
     }
 
     void set_destroy(pa_time_event_destroy_cb_t cb) {
@@ -138,13 +151,20 @@ struct pa_time_event {
 
   private:
     void expired(const boost::system::error_code& error) {
-        if (dead || error) return;
+        --in_async_wait;
+        if (dead && in_async_wait == 0) {
+            delete this;
+            return;
+        }
+
+        if (error) return;
         callback(&mainloop->api, this, &deadline, userdata);
     }
 
     boost::asio::steady_timer timer;
     struct timeval deadline;
     bool dead;
+    int in_async_wait;
     pa_time_event_cb_t callback;
     void* userdata;
     pa_time_event_destroy_cb_t destroy_callback;
