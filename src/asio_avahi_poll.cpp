@@ -18,6 +18,13 @@ struct AvahiWatch {
                int fd, AvahiWatchCallback callback_, void* userdata_)
             : strand(strand_), socket(io_service), callback(callback_), userdata(userdata_),
               dead(false), in_callback(false) {
+        // We have to duplicate file descriptor because socket takes ownership of it
+        // and we don't want it to do so.
+        int new_fd = dup(fd);
+        if (new_fd == -1) {
+            throw std::runtime_error("Couldn't duplicate file descriptor" +
+                                     std::string(strerror(errno)));
+        }
         socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), fd);
     }
 
@@ -49,6 +56,7 @@ struct AvahiWatch {
   private:
     void event_handler(AvahiWatchEvent event, const boost::system::error_code& error, std::size_t) {
         if (dead) return;
+        if (error == boost::asio::error::operation_aborted) return;
         start_monitor(event);
 
         event_happened = event;
