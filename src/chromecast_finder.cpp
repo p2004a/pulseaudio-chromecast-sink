@@ -31,6 +31,8 @@ ChromecastFinder::~ChromecastFinder() {
 
 void ChromecastFinder::stop() {
     auto closer = [this]() {
+        if (stopped) return;
+        stopped = true;
         while (!resolvers.empty()) {
             auto resolverId = resolvers.begin()->first;
             remove_resolver(resolverId);
@@ -52,6 +54,7 @@ void ChromecastFinder::stop() {
 }
 
 void ChromecastFinder::start_discovery() {
+    stopped = false;
     int error;
     avahi_client = avahi_client_new(poll.get_pool(), AVAHI_CLIENT_NO_FAIL,
                                     ChromecastFinder::client_callback, this, &error);
@@ -194,11 +197,12 @@ std::string ChromecastFinder::get_avahi_error() const {
 void ChromecastFinder::remove_resolver(ResolverId id) {
     auto resolver_it = resolvers.find(id);
     if (resolver_it == resolvers.end()) {
-        std::cerr << "WARN: couldn't remove resolver, it wasn't there" << std::endl;
+        throw std::logic_error("Couldn't remove resolver, it wasn't there");
     } else {
-        chromecasts_remove(resolver_it->second);
-        avahi_service_resolver_free(resolver_it->second);
+        AvahiServiceResolver* resolver = resolver_it->second;
+        avahi_service_resolver_free(resolver);
         resolvers.erase(resolver_it);
+        chromecasts_remove(resolver);
     }
 }
 
@@ -265,7 +269,9 @@ void ChromecastFinder::chromecasts_update(AvahiServiceResolver* resolver, const 
 void ChromecastFinder::chromecasts_remove(AvahiServiceResolver* resolver) {
     auto resolver_to_chromecast_it = resolver_to_chromecast.find(resolver);
     if (resolver_to_chromecast_it == resolver_to_chromecast.end()) {
-        throw std::logic_error("Can't remove non existent resolver from chromecasts");
+        // This is possible when someone calls ChromecastFinder::stop after resolver was registered
+        // but before it resolved service.
+        return;
     }
 
     bool updated = false;

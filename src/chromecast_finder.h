@@ -89,6 +89,7 @@ class ChromecastFinder {
     std::function<void(UpdateType, ChromecastInfo)> update_callback;
     AvahiClient* avahi_client = nullptr;
     AvahiServiceBrowser* avahi_browser = nullptr;
+    bool stopped;
 
     std::unordered_map<ResolverId, AvahiServiceResolver*, ResolverIdHash> resolvers;
     std::unordered_map<std::string, std::unique_ptr<InternalChromecastInfo>> chromecasts;
