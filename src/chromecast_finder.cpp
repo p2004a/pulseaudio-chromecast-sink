@@ -37,9 +37,11 @@ void ChromecastFinder::stop() {
         }
         if (avahi_browser != nullptr) {
             avahi_service_browser_free(avahi_browser);
+            avahi_browser = nullptr;
         }
         if (avahi_client != nullptr) {
             avahi_client_free(avahi_client);
+            avahi_client = nullptr;
         }
     };
     if (poll.get_strand().running_in_this_thread()) {
