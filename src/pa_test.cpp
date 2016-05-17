@@ -17,6 +17,9 @@
 #include <pulse/mainloop.h>
 #include <pulse/stream.h>
 
+#include <boost/asio.hpp>
+
+#include "asio_pa_mainloop_api.h"
 #include "defer.h"
 
 struct sin_wave_sound {
@@ -177,7 +180,7 @@ void context_event_callback(pa_context* /*context*/, const char* /*name*/,
 }
 
 void context_state_callback(pa_context* context, void* userdata) {
-    pa_mainloop* loop = static_cast<pa_mainloop*>(userdata);
+    pa_mainloop_api* loop_api = static_cast<pa_mainloop_api*>(userdata);
     pa_context_state_t state = pa_context_get_state(context);
     switch (state) {
         case PA_CONTEXT_READY:
@@ -187,40 +190,54 @@ void context_state_callback(pa_context* context, void* userdata) {
             break;
         case PA_CONTEXT_TERMINATED:
             std::cerr << "PA: Connection terminated cleanly." << std::endl;
-            pa_mainloop_quit(loop, 0);
+            (loop_api->quit)(loop_api, 0);
             break;
         case PA_CONTEXT_FAILED: throw pa_error(context, "Connection to PulseAudio serwer failed");
         default: break;
     }
 }
 
+void start_stuff(pa_mainloop_api* loop_api, pa_context** context) {
+    *context = pa_context_new(loop_api, "PA Test");
+    if (!*context) {
+        throw pa_error("Couldn't create context");
+    }
+
+    pa_context_set_state_callback(*context, context_state_callback, loop_api);
+    pa_context_set_event_callback(*context, context_event_callback, NULL);
+
+    if (pa_context_connect(*context, NULL, PA_CONTEXT_NOFLAGS, NULL) < 0) {
+        throw pa_error(*context, "Couldn't connect to PulseAudio server");
+    }
+}
+
+#define USE_ASIO_LOOP 1
+
 int main() {
+    pa_context* context;
+#if USE_ASIO_LOOP
+    boost::asio::io_service io_service;
+    AsioPulseAudioMainloop loop(io_service);
+    loop.set_loop_quit_callback([](int retval) {
+        if (retval != 0) {
+            throw pa_error("Main loop failed: " + std::to_string(retval));
+        }
+    });
+    pa_mainloop_api* loop_api = loop.get_api();
+    loop.get_strand().post([&] { start_stuff(loop_api, &context); });
+    io_service.run();
+#else
     pa_mainloop* loop = pa_mainloop_new();
     defer {
         pa_mainloop_free(loop);
     };
-
     pa_mainloop_api* loop_api = pa_mainloop_get_api(loop);
-
-    pa_context* context = pa_context_new(loop_api, "PA Test");
-    if (!context) {
-        throw pa_error("Couldn't create context");
-    }
-    defer {
-        pa_context_unref(context);
-    };
-
-    pa_context_set_state_callback(context, context_state_callback, loop);
-    pa_context_set_event_callback(context, context_event_callback, NULL);
-
-    if (pa_context_connect(context, NULL, PA_CONTEXT_NOFLAGS, NULL) < 0) {
-        throw pa_error(context, "Couldn't connect to PulseAudio server");
-    }
-
+    start_stuff(loop_api, &context);
     int retval;
     if (pa_mainloop_run(loop, &retval) < 0) {
         throw pa_error("Main loop failes: " + std::to_string(retval));
     }
-
+#endif
+    pa_context_unref(context);
     return 0;
 }
