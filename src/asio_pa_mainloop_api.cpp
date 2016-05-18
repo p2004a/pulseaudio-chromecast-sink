@@ -1,308 +1,120 @@
-#include <errno.h>
-#include <string.h>
-#include <unistd.h>
-
 #include <cassert>
-#include <chrono>
-#include <functional>
 
-#include <boost/asio/generic/stream_protocol.hpp>
 #include <boost/asio/io_service.hpp>
-#include <boost/asio/steady_timer.hpp>
 
 #include "asio_pa_mainloop_api.h"
+#include "generic_loop_api.h"
 
-struct pa_io_event {
-  public:
-    pa_io_event(const pa_io_event&) = delete;
+typedef IOEvent<void*, pa_mainloop_api*> PAIOEvent;
+typedef TimerEvent<void*, pa_mainloop_api*> PATimerEvent;
+typedef DeferedEvent<void*, pa_mainloop_api*> PADeferedEvent;
 
-    pa_io_event(AsioPulseAudioMainloop* mainloop_, int fd, pa_io_event_cb_t cb, void* userdata_)
-            : mainloop(mainloop_), socket(mainloop->io_service), dead(false), in_async(0),
-              callback(cb), userdata(userdata_), destroy_callback(nullptr) {
-        // We have to duplicate file descriptor because socket takes ownership of it
-        // and we don't want it to do so.
-        int new_fd = dup(fd);
-        if (new_fd == -1) {
-            throw std::runtime_error("Couldn't duplicate file descriptor" +
-                                     std::string(strerror(errno)));
-        }
-        socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), new_fd);
-    }
+IOEventFlags map_io_flags_from_pa(pa_io_event_flags_t pa_flags) {
+    IOEventFlags flags = IOEventFlags::NONE;
+    if (pa_flags & PA_IO_EVENT_ERROR) flags |= IOEventFlags::ERROR;
+    if (pa_flags & PA_IO_EVENT_INPUT) flags |= IOEventFlags::INPUT;
+    if (pa_flags & PA_IO_EVENT_OUTPUT) flags |= IOEventFlags::OUTPUT;
+    if (pa_flags & PA_IO_EVENT_HANGUP) flags |= IOEventFlags::HANGUP;
+    return flags;
+}
 
-    ~pa_io_event() {
-        if (destroy_callback) {
-            destroy_callback(&mainloop->api, this, userdata);
-        }
-    }
-
-    void enable(pa_io_event_flags_t events) {
-        assert(!dead);
-        socket.cancel();
-        start_monitor(events);
-    }
-
-    void free() {
-        assert(!dead);
-        dead = true;
-        socket.cancel();
-        if (in_async == 0) {
-            delete this;
-        }
-    }
-
-    void set_destroy(pa_io_event_destroy_cb_t cb) {
-        assert(!dead);
-        destroy_callback = cb;
-    }
-
-    AsioPulseAudioMainloop* mainloop;
-
-  private:
-    void event_handler(pa_io_event_flags_t event, const boost::system::error_code& error,
-                       std::size_t) {
-        --in_async;
-        if (dead && in_async == 0) {
-            delete this;
-            return;
-        }
-
-        if (error == boost::asio::error::operation_aborted) return;
-        start_monitor(event);
-
-        if (error && error != boost::asio::error::eof) {
-            event = static_cast<pa_io_event_flags_t>(static_cast<int>(event) |
-                                                     static_cast<int>(PA_IO_EVENT_ERROR));
-        }
-        callback(&mainloop->api, this, socket.native_handle(), event, userdata);
-    }
-
-    void start_monitor(pa_io_event_flags_t events) {
-        assert(!dead);
-        using namespace std::placeholders;
-        if (events & PA_IO_EVENT_INPUT) {
-            ++in_async;
-            socket.async_read_some(
-                    boost::asio::null_buffers(),
-                    mainloop->strand.wrap(std::bind(&pa_io_event::event_handler, this,
-                                                    PA_IO_EVENT_INPUT, _1, _2)));
-        }
-        if (events & PA_IO_EVENT_OUTPUT) {
-            ++in_async;
-            socket.async_write_some(
-                    boost::asio::null_buffers(),
-                    mainloop->strand.wrap(std::bind(&pa_io_event::event_handler, this,
-                                                    PA_IO_EVENT_OUTPUT, _1, _2)));
-        }
-    }
-
-    boost::asio::generic::stream_protocol::socket socket;
-    bool dead;
-    int in_async;
-    pa_io_event_cb_t callback;
-    void* userdata;
-    pa_io_event_destroy_cb_t destroy_callback;
-};
-
-struct pa_time_event {
-  public:
-    pa_time_event(const pa_time_event&) = delete;
-
-    pa_time_event(AsioPulseAudioMainloop* mainloop_, pa_time_event_cb_t cb, void* userdata_)
-            : mainloop(mainloop_), timer(mainloop->io_service), dead(false), in_async_wait(0),
-              callback(cb), userdata(userdata_), destroy_callback(nullptr) {}
-
-    ~pa_time_event() {
-        if (destroy_callback) {
-            destroy_callback(&mainloop->api, this, userdata);
-        }
-    }
-
-    void restart(const struct timeval* tv) {
-        assert(!dead);
-        if (!tv) {
-            timer.cancel();
-            return;
-        }
-
-        deadline = *tv;
-        timer.expires_at(
-                boost::asio::steady_timer::time_point(std::chrono::seconds(deadline.tv_sec) +
-                                                      std::chrono::microseconds(deadline.tv_usec)));
-        ++in_async_wait;
-        timer.async_wait(mainloop->strand.wrap(
-                std::bind(&pa_time_event::expired, this, std::placeholders::_1)));
-    }
-
-    void free() {
-        assert(!dead);
-        dead = true;
-        timer.cancel();
-        if (in_async_wait == 0) {
-            delete this;
-        }
-    }
-
-    void set_destroy(pa_time_event_destroy_cb_t cb) {
-        assert(!dead);
-        destroy_callback = cb;
-    }
-
-    AsioPulseAudioMainloop* mainloop;
-
-  private:
-    void expired(const boost::system::error_code& error) {
-        --in_async_wait;
-        if (dead && in_async_wait == 0) {
-            delete this;
-            return;
-        }
-
-        if (error) return;
-        callback(&mainloop->api, this, &deadline, userdata);
-    }
-
-    boost::asio::steady_timer timer;
-    struct timeval deadline;
-    bool dead;
-    int in_async_wait;
-    pa_time_event_cb_t callback;
-    void* userdata;
-    pa_time_event_destroy_cb_t destroy_callback;
-};
-
-struct pa_defer_event {
-  public:
-    pa_defer_event(const pa_defer_event&) = delete;
-
-    pa_defer_event(AsioPulseAudioMainloop* mainloop_, pa_defer_event_cb_t cb, void* userdata_)
-            : mainloop(mainloop_), dead(false), posted(false), callback(cb), userdata(userdata_),
-              destroy_callback(nullptr) {
-        enable(1);
-    }
-
-    ~pa_defer_event() {
-        if (destroy_callback) {
-            destroy_callback(&mainloop->api, this, userdata);
-        }
-    }
-
-    void enable(int b) {
-        assert(!dead);
-        if (b) {
-            running = true;
-            if (!posted) {
-                posted = true;
-                mainloop->strand.post(std::bind(&pa_defer_event::run, this));
-            }
-        } else {
-            running = false;
-        }
-    }
-
-    void free() {
-        assert(!dead);
-        dead = true;
-        if (!posted) {
-            delete this;
-        }
-    }
-
-    void set_destroy(pa_defer_event_destroy_cb_t cb) {
-        assert(!dead);
-        destroy_callback = cb;
-    }
-
-    AsioPulseAudioMainloop* mainloop;
-
-  private:
-    void run() {
-        if (dead) {
-            delete this;
-            return;
-        }
-        if (!running) {
-            posted = false;
-            return;
-        }
-        callback(&mainloop->api, this, userdata);
-        mainloop->strand.post(std::bind(&pa_defer_event::run, this));
-    }
-
-    bool dead, running, posted;
-    pa_defer_event_cb_t callback;
-    void* userdata;
-    pa_defer_event_destroy_cb_t destroy_callback;
-};
+pa_io_event_flags_t map_io_flags_to_pa(IOEventFlags flags) {
+    pa_io_event_flags_t pa_flags = PA_IO_EVENT_NULL;
+    if ((flags & IOEventFlags::ERROR) != IOEventFlags::NONE)
+        pa_flags = static_cast<pa_io_event_flags_t>(pa_flags | PA_IO_EVENT_ERROR);
+    if ((flags & IOEventFlags::INPUT) != IOEventFlags::NONE)
+        pa_flags = static_cast<pa_io_event_flags_t>(pa_flags | PA_IO_EVENT_INPUT);
+    if ((flags & IOEventFlags::OUTPUT) != IOEventFlags::NONE)
+        pa_flags = static_cast<pa_io_event_flags_t>(pa_flags | PA_IO_EVENT_OUTPUT);
+    if ((flags & IOEventFlags::HANGUP) != IOEventFlags::NONE)
+        pa_flags = static_cast<pa_io_event_flags_t>(pa_flags | PA_IO_EVENT_HANGUP);
+    return pa_flags;
+}
 
 pa_io_event* AsioPulseAudioMainloop::io_new(pa_mainloop_api* a, int fd, pa_io_event_flags_t events,
                                             pa_io_event_cb_t cb, void* userdata) {
     auto api = static_cast<AsioPulseAudioMainloop*>(a->userdata);
     assert(api->strand.running_in_this_thread());
-    auto io_event = new pa_io_event(api, fd, cb, userdata);
-    io_event->enable(events);
-    return io_event;
+    auto io_event = new PAIOEvent(api->strand, api->io_service, fd, userdata, a,
+                                  [cb](PAIOEvent* event, int fd_, IOEventFlags flags,
+                                       void* userdata_, pa_mainloop_api* api_) {
+                                      cb(api_, reinterpret_cast<pa_io_event*>(event), fd_,
+                                         map_io_flags_to_pa(flags), userdata_);
+                                  });
+    io_event->update(map_io_flags_from_pa(events));
+    return reinterpret_cast<pa_io_event*>(io_event);
 }
 
 void AsioPulseAudioMainloop::io_enable(pa_io_event* e, pa_io_event_flags_t events) {
-    assert(e->mainloop->strand.running_in_this_thread());
-    e->enable(events);
+    reinterpret_cast<PAIOEvent*>(e)->update(map_io_flags_from_pa(events));
 }
 
 void AsioPulseAudioMainloop::io_free(pa_io_event* e) {
-    assert(e->mainloop->strand.running_in_this_thread());
-    e->free();
+    reinterpret_cast<PAIOEvent*>(e)->free();
 }
 
 void AsioPulseAudioMainloop::io_set_destroy(pa_io_event* e, pa_io_event_destroy_cb_t cb) {
-    assert(e->mainloop->strand.running_in_this_thread());
-    e->set_destroy(cb);
+    reinterpret_cast<PAIOEvent*>(e)->set_destroy_callback(
+            [cb](PAIOEvent* event, void* userdata, pa_mainloop_api* api_) {
+                cb(api_, reinterpret_cast<pa_io_event*>(event), userdata);
+            });
 }
 
 pa_time_event* AsioPulseAudioMainloop::time_new(pa_mainloop_api* a, const struct timeval* tv,
                                                 pa_time_event_cb_t cb, void* userdata) {
     auto api = static_cast<AsioPulseAudioMainloop*>(a->userdata);
     assert(api->strand.running_in_this_thread());
-    auto time_event = new pa_time_event(api, cb, userdata);
-    time_event->restart(tv);
-    return time_event;
+    auto time_event =
+            new PATimerEvent(api->strand, api->io_service, userdata, a,
+                             [cb](PATimerEvent* event, const struct timeval* tv, void* userdata_,
+                                  pa_mainloop_api* api_) {
+                                 cb(api_, reinterpret_cast<pa_time_event*>(event), tv, userdata_);
+                             });
+    time_event->update(tv);
+    return reinterpret_cast<pa_time_event*>(time_event);
 }
 
 void AsioPulseAudioMainloop::time_restart(pa_time_event* e, const struct timeval* tv) {
-    assert(e->mainloop->strand.running_in_this_thread());
-    e->restart(tv);
+    reinterpret_cast<PATimerEvent*>(e)->update(tv);
 }
 
 void AsioPulseAudioMainloop::time_free(pa_time_event* e) {
-    assert(e->mainloop->strand.running_in_this_thread());
-    e->free();
+    reinterpret_cast<PATimerEvent*>(e)->free();
 }
 
 void AsioPulseAudioMainloop::time_set_destroy(pa_time_event* e, pa_time_event_destroy_cb_t cb) {
-    assert(e->mainloop->strand.running_in_this_thread());
-    e->set_destroy(cb);
+    reinterpret_cast<PATimerEvent*>(e)->set_destroy_callback(
+            [cb](PATimerEvent* event, void* userdata, pa_mainloop_api* api) {
+                cb(api, reinterpret_cast<pa_time_event*>(event), userdata);
+            });
 }
 
 pa_defer_event* AsioPulseAudioMainloop::defer_new(pa_mainloop_api* a, pa_defer_event_cb_t cb,
                                                   void* userdata) {
     auto api = static_cast<AsioPulseAudioMainloop*>(a->userdata);
     assert(api->strand.running_in_this_thread());
-    auto defer_event = new pa_defer_event(api, cb, userdata);
-    return defer_event;
+    auto defered_event =
+            new PADeferedEvent(api->strand, userdata, a,
+                               [cb](PADeferedEvent* event, void* userdata_, pa_mainloop_api* api_) {
+                                   cb(api_, reinterpret_cast<pa_defer_event*>(event), userdata_);
+                               });
+    defered_event->update(true);
+    return reinterpret_cast<pa_defer_event*>(defered_event);
 }
 
 void AsioPulseAudioMainloop::defer_enable(pa_defer_event* e, int b) {
-    assert(e->mainloop->strand.running_in_this_thread());
-    e->enable(b);
+    reinterpret_cast<PADeferedEvent*>(e)->update(b != 0);
 }
 
 void AsioPulseAudioMainloop::defer_free(pa_defer_event* e) {
-    assert(e->mainloop->strand.running_in_this_thread());
-    e->free();
+    reinterpret_cast<PADeferedEvent*>(e)->free();
 }
 
 void AsioPulseAudioMainloop::defer_set_destroy(pa_defer_event* e, pa_defer_event_destroy_cb_t cb) {
-    assert(e->mainloop->strand.running_in_this_thread());
-    e->set_destroy(cb);
+    reinterpret_cast<PADeferedEvent*>(e)->set_destroy_callback(
+            [cb](PADeferedEvent* event, void* userdata, pa_mainloop_api* api) {
+                cb(api, reinterpret_cast<pa_defer_event*>(event), userdata);
+            });
 }
 
 void AsioPulseAudioMainloop::quit(pa_mainloop_api* a, int retval) {
