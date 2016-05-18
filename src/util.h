@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <tuple>
 
 template <class T>
 void hash_combine_one(std::size_t& seed, const T& val) {
@@ -16,4 +17,15 @@ std::size_t hash_combine(const T& val, const U&... rest) {
     std::size_t res = hash_combine(rest...);
     hash_combine_one(res, val);
     return res;
+}
+
+template <class R, class... Args, std::size_t... I>
+R call_helper(std::function<R(Args...)> const& func, std::tuple<Args...> const& params,
+              std::index_sequence<I...>) {
+    return func(std::get<I>(params)...);
+}
+
+template <typename R, typename... Args>
+R call(std::function<R(Args...)> const& func, std::tuple<Args...> const& params) {
+    return call_helper(func, params, std::index_sequence_for<Args...>{});
 }
