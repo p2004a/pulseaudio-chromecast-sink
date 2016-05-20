@@ -9,6 +9,8 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
 
+#include <spdlog/spdlog.h>
+
 #include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
 
@@ -31,7 +33,8 @@ class ChromecastFinder {
     };
 
     ChromecastFinder(boost::asio::io_service& io_service_,
-                     std::function<void(UpdateType, ChromecastInfo)> update_callback_);
+                     std::function<void(UpdateType, ChromecastInfo)> update_callback_,
+                     const char* logger_name = "default");
 
     ~ChromecastFinder();
 
@@ -89,6 +92,11 @@ class ChromecastFinder {
     void chromecasts_remove(AvahiServiceResolver* resolver);
     void send_update(UpdateType, InternalChromecastInfo*) const;
 
+    std::map<std::string, std::string> avahiDNSStringListToMap(AvahiStringList* node);
+    boost::asio::ip::tcp::endpoint avahiAddresToAsioEndpoint(const AvahiAddress* address,
+                                                             uint16_t port);
+
+    std::shared_ptr<spdlog::logger> logger;
     boost::asio::io_service& io_service;
     AsioAvahiPoll poll;
     std::function<void(UpdateType, ChromecastInfo)> update_callback;

@@ -1,5 +1,4 @@
 #include <functional>
-#include <iostream>
 #include <map>
 #include <memory>
 #include <string>
@@ -7,6 +6,8 @@
 
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
+
+#include <spdlog/spdlog.h>
 
 #include <avahi-client/client.h>
 #include <avahi-client/lookup.h>
@@ -18,8 +19,10 @@
 #include "defer.h"
 
 ChromecastFinder::ChromecastFinder(boost::asio::io_service& io_service_,
-                                   std::function<void(UpdateType, ChromecastInfo)> update_callback_)
+                                   std::function<void(UpdateType, ChromecastInfo)> update_callback_,
+                                   const char* logger_name)
         : io_service(io_service_), poll(io_service), update_callback(update_callback_) {
+    logger = spdlog::get(logger_name);
     poll.get_strand().post(std::bind(&ChromecastFinder::start_discovery, this));
 }
 
@@ -82,9 +85,7 @@ void ChromecastFinder::client_callback(AvahiClient* c, AvahiClientState state, v
         case AVAHI_CLIENT_S_REGISTERING:
         case AVAHI_CLIENT_S_COLLISION: break;
 
-        case AVAHI_CLIENT_CONNECTING:
-            std::cerr << "Connecting to Avahi server..." << std::endl;
-            break;
+        case AVAHI_CLIENT_CONNECTING: cf->logger->info("Connecting to Avahi server..."); break;
 
         case AVAHI_CLIENT_FAILURE:
             if (avahi_client_errno(cf->avahi_client) == AVAHI_ERR_DISCONNECTED) {
@@ -112,6 +113,10 @@ void ChromecastFinder::browse_callback(AvahiServiceBrowser* b, AvahiIfIndex inte
             throw ChromecastFinderException("Browser failure: " + cf->get_avahi_error());
 
         case AVAHI_BROWSER_NEW: {
+            cf->logger->debug(
+                    "(Browser) New service discovered name: {} interface: {}, protocol: {}", name,
+                    interface, protocol);
+
             AvahiServiceResolver* resolver = avahi_service_resolver_new(
                     cf->avahi_client, interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC,
                     static_cast<AvahiLookupFlags>(0), ChromecastFinder::resolve_callback, cf);
@@ -125,6 +130,9 @@ void ChromecastFinder::browse_callback(AvahiServiceBrowser* b, AvahiIfIndex inte
         }
 
         case AVAHI_BROWSER_REMOVE: {
+            cf->logger->debug(
+                    "(Browser) Service dissapeared name: '{}' interface: {}, protocol: {}", name,
+                    interface, protocol);
             cf->remove_resolver(ResolverId(interface, protocol, name));
             break;
         }
@@ -134,14 +142,15 @@ void ChromecastFinder::browse_callback(AvahiServiceBrowser* b, AvahiIfIndex inte
     }
 }
 
-boost::asio::ip::tcp::endpoint avahiAddresToAsioEndpoint(const AvahiAddress* address,
-                                                         uint16_t port) {
+boost::asio::ip::tcp::endpoint ChromecastFinder::avahiAddresToAsioEndpoint(
+        const AvahiAddress* address, uint16_t port) {
     char addr_str[AVAHI_ADDRESS_STR_MAX];
     avahi_address_snprint(addr_str, sizeof(addr_str), address);
     return boost::asio::ip::tcp::endpoint(boost::asio::ip::address::from_string(addr_str), port);
 }
 
-std::map<std::string, std::string> avahiDNSStringListToMap(AvahiStringList* node) {
+std::map<std::string, std::string> ChromecastFinder::avahiDNSStringListToMap(
+        AvahiStringList* node) {
     std::map<std::string, std::string> result;
     for (; node; node = node->next) {
         size_t eq_pos;
@@ -151,8 +160,7 @@ std::map<std::string, std::string> avahiDNSStringListToMap(AvahiStringList* node
             }
         }
         if (eq_pos == node->size) {
-            std::cerr << "Avahi DNS string element didn't contain equal sign, ignoring"
-                      << std::endl;
+            logger->warn("Avahi DNS string element didn't contain equal sign, ignoring");
             continue;
         }
         result.insert({std::string((char*)node->text, eq_pos),
@@ -172,15 +180,18 @@ void ChromecastFinder::resolve_callback(AvahiServiceResolver* r, AvahiIfIndex in
 
     switch (event) {
         case AVAHI_RESOLVER_FAILURE:
-            std::cerr << "(Resolver) Failed to resolve service '" << name << "' of type '" << type
-                      << "' in domain '" << domain << "': " << cf->get_avahi_error() << std::endl;
-
+            cf->logger->error(
+                    "(Resolver) Failed to resolve service name: '{}' interface: {} protocol: "
+                    "{}: {}",
+                    name, interface, protocol, cf->get_avahi_error());
             cf->remove_resolver(ResolverId(interface, protocol, name));
             break;
 
         case AVAHI_RESOLVER_FOUND: {
-            auto endpoint = avahiAddresToAsioEndpoint(address, port);
-            auto dns = avahiDNSStringListToMap(txt);
+            cf->logger->debug("(Resolver) Resolved service name: '{}' interface: {} protocol: {}",
+                              name, interface, protocol);
+            auto endpoint = cf->avahiAddresToAsioEndpoint(address, port);
+            auto dns = cf->avahiDNSStringListToMap(txt);
             std::string chromecast_name(name);
             cf->chromecasts_update(r, name, endpoint, dns);
             break;
@@ -288,6 +299,7 @@ void ChromecastFinder::chromecasts_remove(AvahiServiceResolver* resolver) {
 }
 
 void ChromecastFinder::send_update(UpdateType type, InternalChromecastInfo* chromecast) const {
+    logger->trace("Sending update from ChromecastFinder");
     ChromecastInfo info;
     info.name = chromecast->name;
     info.dns = chromecast->dns;

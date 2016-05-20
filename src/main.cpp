@@ -1,4 +1,3 @@
-#include <boost/asio.hpp>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
@@ -6,10 +5,18 @@
 #include <thread>
 #include <vector>
 
+#include <boost/asio.hpp>
+
+#include <spdlog/spdlog.h>
+
 #include "chromecast_finder.h"
 #include "defer.h"
 
 int main() {
+    auto default_logger = spdlog::stdout_logger_mt("default", true /*use color*/);
+
+    default_logger->set_level(spdlog::level::debug);
+
     boost::asio::io_service io_service;
 
     ChromecastFinder finder(io_service, [](ChromecastFinder::UpdateType type,
