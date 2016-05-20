@@ -15,6 +15,11 @@
 #include "asio_avahi_poll.h"
 #include "util.h"
 
+class ChromecastFinderException : public std::runtime_error {
+  public:
+    ChromecastFinderException(std::string message) : std::runtime_error(message) {}
+};
+
 class ChromecastFinder {
   public:
     enum class UpdateType { NEW, UPDATE, REMOVE };

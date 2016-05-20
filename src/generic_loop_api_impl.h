@@ -24,8 +24,8 @@ IOEvent<Userdata...>::IOEvent(boost::asio::io_service::strand& strand_,
     // and we don't want it to do so.
     int new_fd = dup(fd);
     if (new_fd == -1) {
-        throw std::runtime_error("Couldn't duplicate file descriptor" +
-                                 std::string(strerror(errno)));
+        throw GenericLoopApiException("Couldn't duplicate file descriptor" +
+                                      std::string(strerror(errno)));
     }
     socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), new_fd);
 }

@@ -10,6 +10,11 @@
 #include <boost/asio/steady_timer.hpp>
 #include <boost/asio/strand.hpp>
 
+class GenericLoopApiException : public std::runtime_error {
+  public:
+    GenericLoopApiException(std::string message) : std::runtime_error(message) {}
+};
+
 enum class IOEventFlags : unsigned char {
     NONE = 0,
     INPUT = 1 << 0,

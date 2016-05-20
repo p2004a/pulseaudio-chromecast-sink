@@ -25,7 +25,7 @@ ChromecastFinder::ChromecastFinder(boost::asio::io_service& io_service_,
 
 ChromecastFinder::~ChromecastFinder() {
     if (avahi_client != nullptr) {
-        throw std::runtime_error("Tried to destruct running instance of ChromecastFinder");
+        throw ChromecastFinderException("Tried to destruct running instance of ChromecastFinder");
     }
 }
 
@@ -54,8 +54,8 @@ void ChromecastFinder::start_discovery() {
     avahi_client = avahi_client_new(poll.get_pool(), AVAHI_CLIENT_NO_FAIL,
                                     ChromecastFinder::client_callback, this, &error);
     if (!avahi_client) {
-        throw std::runtime_error("Couldn't create avahi client: " +
-                                 std::string(avahi_strerror(error)));
+        throw ChromecastFinderException("Couldn't create avahi client: " +
+                                        std::string(avahi_strerror(error)));
     }
 }
 
@@ -74,8 +74,8 @@ void ChromecastFinder::client_callback(AvahiClient* c, AvahiClientState state, v
                                                           "local", static_cast<AvahiLookupFlags>(0),
                                                           ChromecastFinder::browse_callback, cf);
             if (!cf->avahi_browser) {
-                throw std::runtime_error("Failed to create service browser: " +
-                                         cf->get_avahi_error());
+                throw ChromecastFinderException("Failed to create service browser: " +
+                                                cf->get_avahi_error());
             }
             break;
 
@@ -91,7 +91,8 @@ void ChromecastFinder::client_callback(AvahiClient* c, AvahiClientState state, v
                 cf->stop();
                 cf->start_discovery();
             } else {
-                throw std::runtime_error("Server connection failure: " + cf->get_avahi_error());
+                throw ChromecastFinderException("Server connection failure: " +
+                                                cf->get_avahi_error());
             }
             break;
     }
@@ -108,15 +109,15 @@ void ChromecastFinder::browse_callback(AvahiServiceBrowser* b, AvahiIfIndex inte
 
     switch (event) {
         case AVAHI_BROWSER_FAILURE:
-            throw std::runtime_error("Browser failure: " + cf->get_avahi_error());
+            throw ChromecastFinderException("Browser failure: " + cf->get_avahi_error());
 
         case AVAHI_BROWSER_NEW: {
             AvahiServiceResolver* resolver = avahi_service_resolver_new(
                     cf->avahi_client, interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC,
                     static_cast<AvahiLookupFlags>(0), ChromecastFinder::resolve_callback, cf);
             if (!resolver) {
-                throw std::runtime_error("Failed to create service resolver: " +
-                                         cf->get_avahi_error());
+                throw ChromecastFinderException("Failed to create service resolver: " +
+                                                cf->get_avahi_error());
             }
 
             cf->add_resolver(ResolverId(interface, protocol, name), resolver);
@@ -150,7 +151,9 @@ std::map<std::string, std::string> avahiDNSStringListToMap(AvahiStringList* node
             }
         }
         if (eq_pos == node->size) {
-            throw std::logic_error("Avahi DNS string element didn't contain equal sign");
+            std::cerr << "Avahi DNS string element didn't contain equal sign, ignoring"
+                      << std::endl;
+            continue;
         }
         result.insert({std::string((char*)node->text, eq_pos),
                        std::string((char*)node->text + eq_pos + 1, node->size - eq_pos - 1)});
@@ -191,21 +194,16 @@ std::string ChromecastFinder::get_avahi_error() const {
 
 void ChromecastFinder::remove_resolver(ResolverId id) {
     auto resolver_it = resolvers.find(id);
-    if (resolver_it == resolvers.end()) {
-        throw std::logic_error("Couldn't remove resolver, it wasn't there");
-    } else {
-        AvahiServiceResolver* resolver = resolver_it->second;
-        avahi_service_resolver_free(resolver);
-        resolvers.erase(resolver_it);
-        chromecasts_remove(resolver);
-    }
+    assert(resolver_it != resolvers.end());
+    AvahiServiceResolver* resolver = resolver_it->second;
+    avahi_service_resolver_free(resolver);
+    resolvers.erase(resolver_it);
+    chromecasts_remove(resolver);
 }
 
 void ChromecastFinder::add_resolver(ResolverId id, AvahiServiceResolver* resolver) {
     bool inserted = resolvers.insert({id, resolver}).second;
-    if (!inserted) {
-        throw std::logic_error("Couldn't insert resolver because it's already there");
-    }
+    assert(inserted);
 }
 
 void ChromecastFinder::chromecasts_update(AvahiServiceResolver* resolver, const std::string& name,
