@@ -16,7 +16,8 @@ pkg_search_module(libpulse REQUIRED libpulse)
 
 include_directories(${Boost_INCLUDE_DIRS}
                     ${avahi-client_INCLUDE_DIRS}
-                    ${libpulse_INCLUDE_DIRS})
+                    ${libpulse_INCLUDE_DIRS}
+                    third-party/spdlog/include)
 
 add_compile_options(${avahi-client_CFLAGS_OTHER})
 
