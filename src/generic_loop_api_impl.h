@@ -68,7 +68,7 @@ template <class... Userdata>
 void IOEvent<Userdata...>::event_handler(IOEventFlags flag,
                                          const boost::system::error_code& error) {
     if (error == boost::asio::error::operation_aborted) return;
-    assert(!dead);
+    if (dead) return;
     start_monitor(flag);
 
     current_flags = flag;
