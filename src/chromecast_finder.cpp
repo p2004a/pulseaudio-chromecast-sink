@@ -30,7 +30,7 @@ ChromecastFinder::~ChromecastFinder() {
 }
 
 void ChromecastFinder::stop() {
-    auto closer = [this]() {
+    poll.get_strand().dispatch([this]() {
         if (stopped) return;
         stopped = true;
         while (!resolvers.empty()) {
@@ -45,12 +45,7 @@ void ChromecastFinder::stop() {
             avahi_client_free(avahi_client);
             avahi_client = nullptr;
         }
-    };
-    if (poll.get_strand().running_in_this_thread()) {
-        closer();
-    } else {
-        poll.get_strand().post(closer);
-    }
+    });
 }
 
 void ChromecastFinder::start_discovery() {
