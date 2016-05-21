@@ -148,6 +148,7 @@ void TimerEvent<Userdata...>::update(const struct timeval* tv) {
 template <class... Userdata>
 void TimerEvent<Userdata...>::expired_handler(const boost::system::error_code& error) {
     if (error) return;
+    if (dead) return;
     call(callback,
          std::tuple_cat(std::make_tuple(this, const_cast<const timeval*>(&deadline)), userdata));
 }
