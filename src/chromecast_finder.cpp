@@ -27,9 +27,7 @@ ChromecastFinder::ChromecastFinder(boost::asio::io_service& io_service_,
 }
 
 ChromecastFinder::~ChromecastFinder() {
-    if (avahi_client != nullptr) {
-        throw ChromecastFinderException("Tried to destruct running instance of ChromecastFinder");
-    }
+    assert(avahi_client == nullptr && "Tried to destruct running instance of ChromecastFinder");
 }
 
 void ChromecastFinder::stop() {
