@@ -21,7 +21,8 @@
 ChromecastFinder::ChromecastFinder(boost::asio::io_service& io_service_,
                                    std::function<void(UpdateType, ChromecastInfo)> update_callback_,
                                    const char* logger_name)
-        : io_service(io_service_), poll(io_service), update_callback(update_callback_) {
+        : io_service(io_service_), poll(io_service), update_callback(update_callback_),
+          error_handler(nullptr) {
     logger = spdlog::get(logger_name);
     poll.get_strand().post(std::bind(&ChromecastFinder::start_discovery, this));
 }
@@ -56,14 +57,21 @@ void ChromecastFinder::stop() {
     });
 }
 
+void ChromecastFinder::set_error_handler(std::function<void(const std::string&)> error_handler_) {
+    error_handler = error_handler_;
+}
+
 void ChromecastFinder::start_discovery() {
     stopped = false;
     int error;
     avahi_client = avahi_client_new(poll.get_pool(), AVAHI_CLIENT_NO_FAIL,
                                     ChromecastFinder::client_callback, this, &error);
+    if (stopped) {
+        avahi_client = nullptr;
+        return;
+    }
     if (!avahi_client) {
-        throw ChromecastFinderException("Couldn't create avahi client: " +
-                                        std::string(avahi_strerror(error)));
+        report_error("Couldn't create avahi client: " + std::string(avahi_strerror(error)));
     }
 }
 
@@ -77,13 +85,13 @@ void ChromecastFinder::client_callback(AvahiClient* c, AvahiClientState state, v
 
     switch (state) {
         case AVAHI_CLIENT_S_RUNNING:
+            cf->logger->info("(ChromecastFinder) Connected to Avahi server");
             cf->avahi_browser = avahi_service_browser_new(cf->avahi_client, AVAHI_IF_UNSPEC,
                                                           AVAHI_PROTO_UNSPEC, "_googlecast._tcp",
                                                           "local", static_cast<AvahiLookupFlags>(0),
                                                           ChromecastFinder::browse_callback, cf);
             if (!cf->avahi_browser) {
-                throw ChromecastFinderException("Failed to create service browser: " +
-                                                cf->get_avahi_error());
+                cf->report_error("Failed to create service browser: " + cf->get_avahi_error());
             }
             break;
 
@@ -96,11 +104,11 @@ void ChromecastFinder::client_callback(AvahiClient* c, AvahiClientState state, v
 
         case AVAHI_CLIENT_FAILURE:
             if (avahi_client_errno(cf->avahi_client) == AVAHI_ERR_DISCONNECTED) {
+                cf->logger->notice("(ChromecastFinder) Avahi server disconnected");
                 cf->stop();
                 cf->start_discovery();
             } else {
-                throw ChromecastFinderException("Server connection failure: " +
-                                                cf->get_avahi_error());
+                cf->report_error("Server connection failure: " + cf->get_avahi_error());
             }
             break;
     }
@@ -117,7 +125,8 @@ void ChromecastFinder::browse_callback(AvahiServiceBrowser* b, AvahiIfIndex inte
 
     switch (event) {
         case AVAHI_BROWSER_FAILURE:
-            throw ChromecastFinderException("Browser failure: " + cf->get_avahi_error());
+            cf->report_error("Browser failure: " + cf->get_avahi_error());
+            break;
 
         case AVAHI_BROWSER_NEW: {
             cf->logger->debug(
@@ -129,11 +138,10 @@ void ChromecastFinder::browse_callback(AvahiServiceBrowser* b, AvahiIfIndex inte
                     cf->avahi_client, interface, protocol, name, type, domain, AVAHI_PROTO_UNSPEC,
                     static_cast<AvahiLookupFlags>(0), ChromecastFinder::resolve_callback, cf);
             if (!resolver) {
-                throw ChromecastFinderException("Failed to create service resolver: " +
-                                                cf->get_avahi_error());
+                cf->report_error("Failed to create service resolver: " + cf->get_avahi_error());
+            } else {
+                cf->add_resolver(ResolverId(interface, protocol, name), resolver);
             }
-
-            cf->add_resolver(ResolverId(interface, protocol, name), resolver);
             break;
         }
 
@@ -210,6 +218,14 @@ void ChromecastFinder::resolve_callback(AvahiServiceResolver* r, AvahiIfIndex in
             cf->chromecasts_update(r, name, endpoint, dns);
             break;
         }
+    }
+}
+
+void ChromecastFinder::report_error(const std::string& message) {
+    if (error_handler) {
+        error_handler(message);
+    } else {
+        throw ChromecastFinderException(message);
     }
 }
 

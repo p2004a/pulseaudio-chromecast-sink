@@ -55,6 +55,11 @@ int main() {
         signals.cancel();
     };
 
+    finder.set_error_handler([&](const std::string& message) {
+        default_logger->critical(message);
+        stop_everything();
+    });
+
     signals.async_wait([&](const boost::system::error_code& error, int signal_number) {
         if (error) return;
         default_logger->info("Got signal {}. Exiting...", signal_number);

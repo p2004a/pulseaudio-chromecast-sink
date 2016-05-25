@@ -40,6 +40,9 @@ class ChromecastFinder {
 
     void stop();
 
+    // This function have to be called *before* starting event loop!
+    void set_error_handler(std::function<void(const std::string&)>);
+
   private:
     /*
      * This class is necessary because we need to be able to free resolver when
@@ -83,6 +86,7 @@ class ChromecastFinder {
                                  const char*, const AvahiAddress*, uint16_t, AvahiStringList*,
                                  AvahiLookupResultFlags, void*);
 
+    void report_error(const std::string& message);
     std::string get_avahi_error() const;
     void remove_resolver(ResolverId);
     void add_resolver(ResolverId, AvahiServiceResolver*);
@@ -100,6 +104,7 @@ class ChromecastFinder {
     boost::asio::io_service& io_service;
     AsioAvahiPoll poll;
     std::function<void(UpdateType, ChromecastInfo)> update_callback;
+    std::function<void(const std::string&)> error_handler;
     AvahiClient* avahi_client = nullptr;
     AvahiServiceBrowser* avahi_browser = nullptr;
     bool stopped;
