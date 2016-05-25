@@ -1,3 +1,4 @@
+#include <cstring>
 #include <functional>
 #include <iostream>
 #include <stdexcept>
@@ -62,15 +63,14 @@ int main() {
 
     signals.async_wait([&](const boost::system::error_code& error, int signal_number) {
         if (error) return;
-        default_logger->info("Got signal {}. Exiting...", signal_number);
+        default_logger->info("Got signal {}: {}. Exiting...", signal_number,
+                             strsignal(signal_number));
         stop_everything();
     });
 
     std::vector<std::thread> threads;
     for (unsigned i = 0; i < std::thread::hardware_concurrency(); ++i) {
-        threads.emplace_back(std::bind(static_cast<std::size_t (boost::asio::io_service::*)()>(
-                                               &boost::asio::io_service::run),
-                                       &io_service));
+        threads.emplace_back([&io_service]() { io_service.run(); });
     }
     for (auto& t : threads) {
         t.join();
