@@ -24,7 +24,7 @@ ChromecastFinder::ChromecastFinder(boost::asio::io_service& io_service_,
         : io_service(io_service_), poll(io_service), update_callback(update_callback_),
           error_handler(nullptr) {
     logger = spdlog::get(logger_name);
-    poll.get_strand().post(std::bind(&ChromecastFinder::start_discovery, this));
+    poll.get_strand().post([this] { start_discovery(); });
 }
 
 ChromecastFinder::~ChromecastFinder() {
@@ -190,10 +190,10 @@ std::map<std::string, std::string> ChromecastFinder::avahiDNSStringListToMap(
 
 void ChromecastFinder::resolve_callback(AvahiServiceResolver* r, AvahiIfIndex interface,
                                         AvahiProtocol protocol, AvahiResolverEvent event,
-                                        const char* name, const char* type, const char* domain,
-                                        const char* /*host_name*/, const AvahiAddress* address,
-                                        uint16_t port, AvahiStringList* txt, AvahiLookupResultFlags,
-                                        void* data) {
+                                        const char* name, const char* /*type*/,
+                                        const char* /*domain*/, const char* /*host_name*/,
+                                        const AvahiAddress* address, uint16_t port,
+                                        AvahiStringList* txt, AvahiLookupResultFlags, void* data) {
     assert(r);
     ChromecastFinder* cf = static_cast<ChromecastFinder*>(data);
 
