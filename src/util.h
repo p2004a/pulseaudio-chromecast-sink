@@ -1,6 +1,7 @@
 #pragma once
 
 #include <functional>
+#include <string>
 #include <tuple>
 
 template <class T>
@@ -29,3 +30,9 @@ template <typename R, typename... Args>
 R call(std::function<R(Args...)> const& func, std::tuple<Args...> const& params) {
     return call_helper(func, params, std::index_sequence_for<Args...>{});
 }
+
+std::string generate_random_string(
+        std::size_t length,
+        std::string characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+
+std::string replace_all(const std::string& str, const std::string& what, const std::string& to);
