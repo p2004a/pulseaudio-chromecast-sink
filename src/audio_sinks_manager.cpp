@@ -303,15 +303,15 @@ void AudioSinksManager::InternalAudioSink::module_load_callback(pa_context* /*c*
     AudioSinksManager::InternalAudioSink* sink =
             static_cast<AudioSinksManager::InternalAudioSink*>(userdata);
     if (idx == static_cast<uint32_t>(-1)) {
-        sink->manager->logger->error("(AudioSink: '{}') Failed to load module {}: ", sink->name,
-                                     idx, sink->manager->get_pa_error());
+        sink->manager->logger->error("(AudioSink '{}') Failed to load module {}: ", sink->name, idx,
+                                     sink->manager->get_pa_error());
         sink->state = State::DEAD;
         sink->manager->unregister_audio_sink(sink->shared_from_this());
         return;
     }
 
     sink->module_idx = idx;
-    sink->manager->logger->debug("(AudioSink: '{}') Loaded module idx: {}, name: {}", sink->name,
+    sink->manager->logger->debug("(AudioSink '{}') Loaded module idx: {}, name: {}", sink->name,
                                  sink->module_idx, sink->identifier);
     if (sink->state == State::DEAD) {
         sink->stop_sink();
@@ -328,7 +328,7 @@ void AudioSinksManager::InternalAudioSink::module_load_callback(pa_context* /*c*
     std::string stream_name = sink->identifier + "_record_stream";
     sink->stream = pa_stream_new(sink->manager->context, stream_name.c_str(), &sample_spec, NULL);
     if (!sink->stream) {
-        sink->manager->logger->error("(AudioSink: '{}') Failed to create stream: {}", sink->name,
+        sink->manager->logger->error("(AudioSink '{}') Failed to create stream: {}", sink->name,
                                      sink->manager->get_pa_error());
         sink->free();
         return;
@@ -351,8 +351,8 @@ void AudioSinksManager::InternalAudioSink::module_load_callback(pa_context* /*c*
         0) {
         pa_stream_unref(sink->stream);
         sink->stream = nullptr;
-        sink->manager->logger->error("(AudioSink: '{}') Failed to connect to stream: {}",
-                                     sink->name, sink->manager->get_pa_error());
+        sink->manager->logger->error("(AudioSink '{}') Failed to connect to stream: {}", sink->name,
+                                     sink->manager->get_pa_error());
         sink->free();
         return;
     }
@@ -391,7 +391,7 @@ void AudioSinksManager::InternalAudioSink::stream_state_change_callback(pa_strea
 
     switch (state) {
         case PA_STREAM_FAILED:
-            sink->manager->logger->error("(AudioSink: '{}') Stream failed: {}", sink->name,
+            sink->manager->logger->error("(AudioSink '{}') Stream failed: {}", sink->name,
                                          sink->manager->get_pa_error());
             sink->state = State::DEAD;
         case PA_STREAM_TERMINATED:
