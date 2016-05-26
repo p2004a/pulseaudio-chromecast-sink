@@ -26,10 +26,11 @@ set(SOURCE_FILES src/main.cpp
                  src/asio_avahi_poll.cpp
                  src/chromecast_finder.cpp
                  src/util.cpp
-                 src/asio_pa_mainloop_api.cpp)
+                 src/asio_pa_mainloop_api.cpp
+                 src/audio_sinks_manager.cpp)
 
 add_executable(prog ${SOURCE_FILES})
-target_link_libraries(prog ${Boost_LIBRARIES} ${avahi-client_LIBRARIES})
+target_link_libraries(prog pthread ${Boost_LIBRARIES} ${avahi-client_LIBRARIES} ${libpulse_LIBRARIES})
 
 add_executable(pa_test src/pa_test.cpp src/defer.cpp src/asio_pa_mainloop_api.cpp)
 target_link_libraries(pa_test ${Boost_LIBRARIES} ${libpulse_LIBRARIES})
