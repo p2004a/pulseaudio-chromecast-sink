@@ -14,8 +14,10 @@
 #include <pulse/introspect.h>
 #include <pulse/stream.h>
 #include <pulse/subscribe.h>
+#include <pulse/volume.h>
 
 #include "audio_sinks_manager.h"
+#include "defer.h"
 #include "util.h"
 
 struct ContextOperation {
@@ -26,9 +28,16 @@ struct ContextOperation {
     bool report_on_fail;
 };
 
+struct SinkInfoRequest {
+    SinkInfoRequest(AudioSinksManager* manager_, pa_subscription_event_type_t event_type_)
+            : manager(manager_), event_type(event_type_) {}
+    AudioSinksManager* manager;
+    pa_subscription_event_type_t event_type;  // masked!
+};
+
 AudioSinksManager::AudioSinksManager(boost::asio::io_service& io_service_, const char* logger_name)
-        : io_service(io_service_), pa_mainloop(io_service), error_handler(nullptr), running(true),
-          stopping(false) {
+        : io_service(io_service_), pa_mainloop(io_service), error_handler(nullptr),
+          default_sink_name(""), running(true), stopping(false) {
     logger = spdlog::get(logger_name);
     pa_mainloop.get_strand().post([this] { start_pa_connection(); });
     pa_mainloop.set_loop_quit_callback([this](int retval) { mainloop_quit_handler(retval); });
@@ -72,7 +81,7 @@ void AudioSinksManager::context_state_callback(pa_context* c, void* userdata) {
     AudioSinksManager* manager = static_cast<AudioSinksManager*>(userdata);
     pa_context_state_t state = pa_context_get_state(c);
 
-    const char* state_name;
+    const char* state_name = "Wrong impossible state";
     switch (state) {
         case PA_CONTEXT_UNCONNECTED: state_name = "UNCONNECTED"; break;
         case PA_CONTEXT_CONNECTING: state_name = "CONNECTING"; break;
@@ -94,6 +103,7 @@ void AudioSinksManager::context_state_callback(pa_context* c, void* userdata) {
                 for (auto& sink : manager->audio_sinks) {
                     sink->start_sink();
                 }
+                manager->update_server_info();
             } else {
                 while (!manager->audio_sinks.empty()) {
                     auto sink = *manager->audio_sinks.begin();
@@ -149,10 +159,28 @@ void AudioSinksManager::context_subscription_callback(pa_context* /*c*/,
         default: assert(false && "Unexpected subscribtion event type");
     }
     manager->logger->trace("(AudioSinkManager) Subscription: {} {} {}", idx, facility, event_type);
+
+    if (manager->stopping) return;
+
+    if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK_INPUT) {
+        manager->update_sink_input_map(idx, static_cast<pa_subscription_event_type_t>(
+                                                    t & PA_SUBSCRIPTION_EVENT_TYPE_MASK));
+    } else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SERVER) {
+        manager->update_server_info();
+    } else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
+               (t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_CHANGE) {
+        auto it = manager->sink_idx_audio_sink.find(idx);
+        if (it != manager->sink_idx_audio_sink.end()) {
+            it->second->update_sink_info();
+        }
+    }
 }
 
 void AudioSinksManager::context_success_callback(pa_context* /*c*/, int success, void* userdata) {
     ContextOperation* op = static_cast<ContextOperation*>(userdata);
+    defer {
+        delete op;
+    };
     if (!success) {
         std::stringstream msg;
         msg << "Operation '" << op->name << "' on context failed";
@@ -160,6 +188,92 @@ void AudioSinksManager::context_success_callback(pa_context* /*c*/, int success,
             op->manager->report_error(msg.str());
         } else {
             op->manager->logger->error("(AudioSinkManager) {}", msg.str());
+        }
+    }
+}
+
+void AudioSinksManager::update_sink_input_map(uint32_t sink_idx,
+                                              pa_subscription_event_type_t event_type) {
+    pa_operation* op = pa_context_get_sink_input_info(context, sink_idx, sink_input_info_callback,
+                                                      new SinkInfoRequest(this, event_type));
+    if (op) {
+        pa_operation_unref(op);
+    } else {
+        logger->error("(AudioSinksManager) Failed to start getting sink {} info: {}", sink_idx,
+                      get_pa_error());
+    }
+}
+
+void AudioSinksManager::sink_input_info_callback(pa_context* /*c*/, const pa_sink_input_info* info,
+                                                 int eol, void* userdata) {
+    SinkInfoRequest* info_request = static_cast<SinkInfoRequest*>(userdata);
+    AudioSinksManager* manager = info_request->manager;
+    if (eol) {
+        defer {
+            delete info_request;
+        };
+    }
+    if (!info) return;
+    if (manager->stopping) return;
+
+    auto remove_sink_input = [manager, info] {
+        auto sink_inputs_sinks_it = manager->sink_inputs_sinks.find(info->index);
+        if (sink_inputs_sinks_it != manager->sink_inputs_sinks.end()) {
+            auto sink_idx_audio_sink_it =
+                    manager->sink_idx_audio_sink.find(sink_inputs_sinks_it->second);
+            if (sink_idx_audio_sink_it != manager->sink_idx_audio_sink.end()) {
+                sink_idx_audio_sink_it->second->update_sink_inputs_num(-1);
+            }
+            manager->sink_inputs_sinks.erase(sink_inputs_sinks_it);
+        }
+    };
+
+    auto add_sink_input = [manager, info] {
+        manager->sink_inputs_sinks[info->index] = info->sink;
+        auto sink_idx_audio_sink_it = manager->sink_idx_audio_sink.find(info->sink);
+        if (sink_idx_audio_sink_it != manager->sink_idx_audio_sink.end()) {
+            sink_idx_audio_sink_it->second->update_sink_inputs_num(1);
+        }
+    };
+
+    switch (info_request->event_type) {
+        case PA_SUBSCRIPTION_EVENT_NEW: add_sink_input(); break;
+        case PA_SUBSCRIPTION_EVENT_CHANGE:
+            remove_sink_input();
+            add_sink_input();
+            break;
+        case PA_SUBSCRIPTION_EVENT_REMOVE: remove_sink_input(); break;
+        default: assert(false && "Unexpected subscribtion event type");
+    }
+}
+
+void AudioSinksManager::update_server_info() {
+    pa_operation* op = pa_context_get_server_info(context, server_info_callback, this);
+    if (op) {
+        pa_operation_unref(op);
+    } else {
+        logger->error("(AudioSinksManager) Failed to start getting server info", get_pa_error());
+    }
+}
+
+void AudioSinksManager::server_info_callback(pa_context* /*c*/, const pa_server_info* info,
+                                             void* userdata) {
+    AudioSinksManager* manager = static_cast<AudioSinksManager*>(userdata);
+    if (!info) {
+        manager->logger->error("(AudioSinksManager) Failed to get server info");
+        return;
+    }
+    if (manager->stopping) return;
+
+    if (manager->default_sink_name == "" || manager->default_sink_name != info->default_sink_name) {
+        auto it = manager->sink_identifier_audio_sink.find(manager->default_sink_name);
+        if (it != manager->sink_identifier_audio_sink.end()) {
+            it->second->set_is_default_sink(false);
+        }
+        manager->default_sink_name = info->default_sink_name;
+        it = manager->sink_identifier_audio_sink.find(manager->default_sink_name);
+        if (it != manager->sink_identifier_audio_sink.end()) {
+            it->second->set_is_default_sink(true);
         }
     }
 }
@@ -206,6 +320,7 @@ std::shared_ptr<AudioSink> AudioSinksManager::create_new_sink(std::string name) 
             logger->trace("(AudioSinkManager) Registering audio_sink '{}'",
                           internal_sink->get_name());
             audio_sinks.insert(internal_sink);
+            sink_identifier_audio_sink.emplace(internal_sink->get_identifier(), internal_sink);
             if (pa_context_get_state(context) == PA_CONTEXT_READY) {
                 internal_sink->start_sink();
             }
@@ -216,6 +331,13 @@ std::shared_ptr<AudioSink> AudioSinksManager::create_new_sink(std::string name) 
 
 void AudioSinksManager::unregister_audio_sink(std::shared_ptr<InternalAudioSink> sink) {
     logger->trace("(AudioSinkManager) Unregistering audio_sink '{}'", sink->get_name());
+
+    uint32_t sink_idx = sink->get_sink_idx();
+    if (sink_idx != static_cast<uint32_t>(-1)) {
+        sink_idx_audio_sink.erase(sink_idx);
+    }
+
+    sink_identifier_audio_sink.erase(sink->get_identifier());
     audio_sinks.erase(sink);
     if (audio_sinks.empty() && stopping) {
         if (context) {
@@ -227,16 +349,26 @@ void AudioSinksManager::unregister_audio_sink(std::shared_ptr<InternalAudioSink>
 
 AudioSinksManager::InternalAudioSink::InternalAudioSink(AudioSinksManager* manager_,
                                                         std::string name_)
-        : manager(manager_), name(name_), state(State::NONE) {
+        : manager(manager_), name(name_), sink_idx(static_cast<uint32_t>(-1)), state(State::NONE),
+          default_sink(false), activated(false), num_sink_inputs(0) {
     identifier = generate_random_string(10);
+    volume.channels = 0;
+}
+
+AudioSinksManager::InternalAudioSink::~InternalAudioSink() {
+    assert(state == State::DEAD);
 }
 
 const std::string& AudioSinksManager::InternalAudioSink::get_name() const {
     return name;
 }
 
-AudioSinksManager::InternalAudioSink::~InternalAudioSink() {
-    assert(state == State::DEAD);
+const std::string& AudioSinksManager::InternalAudioSink::get_identifier() const {
+    return identifier;
+}
+
+uint32_t AudioSinksManager::InternalAudioSink::get_sink_idx() const {
+    return sink_idx;
 }
 
 void AudioSinksManager::InternalAudioSink::free() {
@@ -358,6 +490,48 @@ void AudioSinksManager::InternalAudioSink::module_load_callback(pa_context* /*c*
     }
 
     sink->state = State::RECORDING;
+
+    sink->update_sink_info();
+}
+
+void AudioSinksManager::InternalAudioSink::update_sink_info() {
+    manager->logger->trace("(AudioSink '{}') Lets update sink info", name);
+    pa_operation* op = pa_context_get_sink_info_by_name(manager->context, identifier.c_str(),
+                                                        sink_info_callback, this);
+    if (op) {
+        pa_operation_unref(op);
+    } else {
+        manager->logger->error("(AudioSink '{}') Failed to start getting sink info: {}", name,
+                               manager->get_pa_error());
+        free();
+    }
+}
+
+void AudioSinksManager::InternalAudioSink::sink_info_callback(pa_context* /*c*/,
+                                                              const pa_sink_info* info, int eol,
+                                                              void* userdata) {
+    AudioSinksManager::InternalAudioSink* sink =
+            static_cast<AudioSinksManager::InternalAudioSink*>(userdata);
+    if (!info) {
+        assert(eol);
+        return;
+    }
+    if (sink->sink_idx == static_cast<uint32_t>(-1)) {
+        sink->sink_idx = info->index;
+        sink->manager->logger->debug("(AudioSink '{}') Sink idx is: {}", sink->name,
+                                     sink->sink_idx);
+        sink->manager->sink_idx_audio_sink.emplace(sink->sink_idx, sink->shared_from_this());
+    }
+
+    if (!pa_cvolume_equal(&sink->volume, &info->volume)) {
+        sink->volume = info->volume;
+        assert(sink->volume.channels == 2);
+        sink->manager->logger->trace("(AudioSink '{}') Volume changed", sink->name);
+        if (sink->volume_callback) {
+            sink->volume_callback(static_cast<double>(sink->volume.values[0]) / PA_VOLUME_NORM,
+                                  static_cast<double>(sink->volume.values[1]) / PA_VOLUME_NORM);
+        }
+    }
 }
 
 void AudioSinksManager::InternalAudioSink::module_unload_callback(pa_context* /*c*/, int success,
@@ -379,7 +553,7 @@ void AudioSinksManager::InternalAudioSink::stream_state_change_callback(pa_strea
     AudioSinksManager::InternalAudioSink* sink =
             static_cast<AudioSinksManager::InternalAudioSink*>(userdata);
     pa_stream_state_t state = pa_stream_get_state(sink->stream);
-    const char* state_str;
+    const char* state_str = "Wrong impossible state";
     switch (state) {
         case PA_STREAM_UNCONNECTED: state_str = "UNCONNECTED"; break;
         case PA_STREAM_CREATING: state_str = "CREATING"; break;
@@ -387,7 +561,7 @@ void AudioSinksManager::InternalAudioSink::stream_state_change_callback(pa_strea
         case PA_STREAM_FAILED: state_str = "FAILED"; break;
         case PA_STREAM_TERMINATED: state_str = "TERMINATED"; break;
     }
-    sink->manager->logger->debug("(AudioSink '{}') Stream new state: {}", sink->name, state_str);
+    sink->manager->logger->trace("(AudioSink '{}') Stream new state: {}", sink->name, state_str);
 
     switch (state) {
         case PA_STREAM_FAILED:
@@ -436,9 +610,55 @@ void AudioSinksManager::InternalAudioSink::stream_read_callback(pa_stream* /*str
                                      sink->name, sink->manager->get_pa_error());
     }
 }
+
 void AudioSinksManager::InternalAudioSink::set_samples_callback(SamplesCallback samples_callback_) {
     assert(manager->pa_mainloop.get_strand().running_in_this_thread());
     samples_callback = samples_callback_;
+}
+
+void AudioSinksManager::InternalAudioSink::set_activation_callback(
+        ActivationCallback activation_callback_) {
+    assert(manager->pa_mainloop.get_strand().running_in_this_thread());
+    activation_callback = activation_callback_;
+}
+
+void AudioSinksManager::InternalAudioSink::set_volume_callback(VolumeCallback volume_callback_) {
+    assert(manager->pa_mainloop.get_strand().running_in_this_thread());
+    volume_callback = volume_callback_;
+}
+
+void AudioSinksManager::InternalAudioSink::set_is_default_sink(bool b) {
+    if (default_sink && !b) {
+        default_sink = false;
+        manager->logger->trace("(AudioSink '{}') Is now not default sink", name);
+    } else if (!default_sink && b) {
+        default_sink = true;
+        manager->logger->trace("(AudioSink '{}') Is now default sink", name);
+    }
+    update_activated();
+}
+
+void AudioSinksManager::InternalAudioSink::update_sink_inputs_num(int difference) {
+    num_sink_inputs += difference;
+    assert(num_sink_inputs >= 0);
+    manager->logger->trace("(AudioSink '{}') Has now {} sink inputs", name, num_sink_inputs);
+    update_activated();
+}
+
+void AudioSinksManager::InternalAudioSink::update_activated() {
+    if (activated && !default_sink && num_sink_inputs == 0) {
+        activated = false;
+        manager->logger->debug("(AudioSink '{}') Deactivated", name);
+        if (activation_callback) {
+            activation_callback(false);
+        }
+    } else if (!activated && (default_sink || num_sink_inputs > 0)) {
+        activated = true;
+        manager->logger->debug("(AudioSink '{}') Activated", name);
+        if (activation_callback) {
+            activation_callback(true);
+        }
+    }
 }
 
 AudioSink::AudioSink(std::shared_ptr<AudioSinksManager::InternalAudioSink> internal_audio_sink_)
@@ -455,4 +675,17 @@ void AudioSink::set_samples_callback(
     internal_audio_sink->manager->pa_mainloop.get_strand().dispatch([
         sink = internal_audio_sink, samples_callback
     ] { sink->set_samples_callback(samples_callback); });
+}
+
+void AudioSink::set_activation_callback(
+        AudioSinksManager::InternalAudioSink::ActivationCallback activation_callback) {
+    internal_audio_sink->manager->pa_mainloop.get_strand().dispatch([
+        sink = internal_audio_sink, activation_callback
+    ] { sink->set_activation_callback(activation_callback); });
+}
+void AudioSink::set_volume_callback(
+        AudioSinksManager::InternalAudioSink::VolumeCallback volume_callback) {
+    internal_audio_sink->manager->pa_mainloop.get_strand().dispatch([
+        sink = internal_audio_sink, volume_callback
+    ] { sink->set_volume_callback(volume_callback); });
 }

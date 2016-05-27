@@ -17,7 +17,7 @@
 int main() {
     auto default_logger = spdlog::stdout_logger_mt("default", true /*use color*/);
 
-    default_logger->set_level(spdlog::level::trace);
+    default_logger->set_level(spdlog::level::debug);
 
     boost::asio::io_service io_service;
 
@@ -53,9 +53,22 @@ int main() {
         }
 
         switch (type) {
-            case ChromecastFinder::UpdateType::NEW:
-                sinks[info.name] = sinks_manager.create_new_sink(info.name);
+            case ChromecastFinder::UpdateType::NEW: {
+                auto sink = sinks_manager.create_new_sink(info.name);
+                sink->set_activation_callback([name = info.name](bool activate) {
+                    std::cout << "Chromecast: " << name << " "
+                              << (activate ? "Activated!" : "Deactivated!") << std::endl;
+                });
+                sink->set_volume_callback([name = info.name](double left, double right) {
+                    std::cout << "Chromecast: " << name << " volume: " << left;
+                    if (left != right) {
+                        std::cout << " " << right;
+                    }
+                    std::cout << std::endl;
+                });
+                sinks[info.name] = sink;
                 break;
+            }
             case ChromecastFinder::UpdateType::UPDATE: break;
             case ChromecastFinder::UpdateType::REMOVE: sinks.erase(info.name); break;
         }

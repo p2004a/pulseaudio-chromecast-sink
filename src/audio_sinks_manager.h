@@ -3,11 +3,13 @@
 #include <memory>
 #include <mutex>
 #include <string>
+#include <unordered_map>
 #include <unordered_set>
 
 #include <spdlog/spdlog.h>
 
 #include <pulse/context.h>
+#include <pulse/introspect.h>
 #include <pulse/stream.h>
 
 #include <boost/asio/io_service.hpp>
@@ -42,14 +44,24 @@ class AudioSinksManager {
     class InternalAudioSink : public std::enable_shared_from_this<InternalAudioSink> {
       public:
         typedef std::function<void(const AudioSample*, size_t)> SamplesCallback;
+        typedef std::function<void(double, double)> VolumeCallback;
+        typedef std::function<void(bool)> ActivationCallback;
 
         InternalAudioSink(AudioSinksManager* manager_, std::string name_);
         ~InternalAudioSink();
 
         const std::string& get_name() const;
+        const std::string& get_identifier() const;
+        uint32_t get_sink_idx() const;
         void set_samples_callback(SamplesCallback);
+        void set_activation_callback(ActivationCallback);
+        void set_volume_callback(VolumeCallback);
         void free();
         void start_sink();
+
+        void set_is_default_sink(bool b);
+        void update_sink_inputs_num(int difference);
+        void update_sink_info();
 
       private:
         enum class State { NONE, STARTED, LOADED, RECORDING, DEAD };
@@ -59,13 +71,21 @@ class AudioSinksManager {
         static void stream_state_change_callback(pa_stream* stream, void* userdata);
         static void stream_read_callback(pa_stream* stream, size_t nbytes, void* userdata);
         void stop_sink();
+        static void sink_info_callback(pa_context* c, const pa_sink_info* info, int eol,
+                                       void* userdata);
+        void update_activated();
 
         AudioSinksManager* manager;
         SamplesCallback samples_callback;
+        ActivationCallback activation_callback;
+        VolumeCallback volume_callback;
         pa_stream* stream;
         std::string name, identifier;
-        uint32_t module_idx;
+        uint32_t module_idx, sink_idx;
+        pa_cvolume volume;
         State state;
+        bool default_sink, activated;
+        int num_sink_inputs;
 
         friend class AudioSink;
     };
@@ -78,6 +98,11 @@ class AudioSinksManager {
     static void context_subscription_callback(pa_context* c, pa_subscription_event_type_t t,
                                               uint32_t idx, void* userdata);
     static void context_success_callback(pa_context* c, int success, void* userdata);
+    static void sink_input_info_callback(pa_context* c, const pa_sink_input_info* info, int eol,
+                                         void* userdata);
+    static void server_info_callback(pa_context* c, const pa_server_info* info, void* userdata);
+    void update_sink_input_map(uint32_t sink, pa_subscription_event_type_t event_type);
+    void update_server_info();
 
     void report_error(const std::string& message);
     std::string get_pa_error() const;
@@ -87,8 +112,19 @@ class AudioSinksManager {
     std::shared_ptr<spdlog::logger> logger;
     AsioPulseAudioMainloop pa_mainloop;
     std::function<void(const std::string&)> error_handler;
+    // insert in AudioSinksManager::create_new_sink,
+    // remove in AudioSinksManager::unregister_audio_sink
     std::unordered_set<std::shared_ptr<InternalAudioSink>> audio_sinks;
+    // insert in InternalAudioSink::sink_info_callback,
+    // remove in AudioSinksManager::unregister_audio_sink
+    std::unordered_map<uint32_t, std::shared_ptr<InternalAudioSink>> sink_idx_audio_sink;
+    // all updates in AudioSinksManager::sink_input_info_callback
+    std::unordered_map<uint32_t, uint32_t> sink_inputs_sinks;
+    // insert in AudioSinksManager::create_new_sink
+    // remove in AudioSinksManager::unregister_audio_sink
+    std::unordered_map<std::string, std::shared_ptr<InternalAudioSink>> sink_identifier_audio_sink;
     pa_context* context;
+    std::string default_sink_name;
     bool running, stopping;
 
     friend class AudioSink;
@@ -101,8 +137,8 @@ class AudioSink {
     ~AudioSink();
 
     void set_samples_callback(AudioSinksManager::InternalAudioSink::SamplesCallback);
-    // TODO: void set_activation_callback(std::function<void(bool)>);
-    // TODO: void set_volume_change_callback(std::function<void(double)>);
+    void set_activation_callback(AudioSinksManager::InternalAudioSink::ActivationCallback);
+    void set_volume_callback(AudioSinksManager::InternalAudioSink::VolumeCallback);
 
   private:
     AudioSink(std::shared_ptr<AudioSinksManager::InternalAudioSink> internal_audio_sink_);
