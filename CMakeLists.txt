@@ -30,10 +30,13 @@ find_package(PkgConfig REQUIRED)
 pkg_search_module(avahi-client REQUIRED avahi-client)
 pkg_search_module(libpulse REQUIRED libpulse)
 
+add_subdirectory(proto)
+
 include_directories(${Boost_INCLUDE_DIRS}
                     ${avahi-client_INCLUDE_DIRS}
                     ${libpulse_INCLUDE_DIRS}
-                    third-party/spdlog/include)
+                    third-party/spdlog/include
+                    ${CMAKE_CURRENT_BINARY_DIR})
 
 add_compile_options(${avahi-client_CFLAGS_OTHER})
 
@@ -43,10 +46,17 @@ set(SOURCE_FILES src/main.cpp
                  src/chromecast_finder.cpp
                  src/util.cpp
                  src/asio_pa_mainloop_api.cpp
-                 src/audio_sinks_manager.cpp)
+                 src/audio_sinks_manager.cpp
+                 src/chromecast_connection.cpp)
 
 add_executable(prog ${SOURCE_FILES})
-target_link_libraries(prog pthread ${Boost_LIBRARIES} ${avahi-client_LIBRARIES} ${libpulse_LIBRARIES})
+target_link_libraries(prog pthread
+                           ${Boost_LIBRARIES}
+                           ${avahi-client_LIBRARIES}
+                           ${libpulse_LIBRARIES}
+                           cast_channel
+                           ${PROTOBUF_LITE_LIBRARY}
+                           cast_channel)
 
 add_executable(pa_test src/pa_test.cpp src/defer.cpp src/asio_pa_mainloop_api.cpp)
 target_link_libraries(pa_test ${Boost_LIBRARIES} ${libpulse_LIBRARIES})
