@@ -7,8 +7,8 @@ Build
 -----
 
 This program requires following libraries to be installed in your
-system: Boost Asio, libavahi-client, libpulse, protobuf-lite. The build
-process also requires `protoc` protobuf compiler to be installed.
+system: Boost Asio, libavahi-client, libpulse, protobuf-lite, spdlog.
+The build process also requires `protoc` protobuf compiler to be installed.
 
     $ mkdir build
     $ cd build

@@ -26,6 +26,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED on)
 set(CMAKE_CXX_STANDARD 14)
 
 find_package(Boost 1.58 REQUIRED COMPONENTS thread system iostreams)
+find_package(spdlog REQUIRED)
 find_package(PkgConfig REQUIRED)
 pkg_search_module(avahi-client REQUIRED avahi-client)
 pkg_search_module(libpulse REQUIRED libpulse)
@@ -35,7 +36,7 @@ add_subdirectory(proto)
 include_directories(${Boost_INCLUDE_DIRS}
                     ${avahi-client_INCLUDE_DIRS}
                     ${libpulse_INCLUDE_DIRS}
-                    third-party/spdlog/include
+                    ${spdlog_INCLUDE_DIRS}
                     ${CMAKE_CURRENT_BINARY_DIR})
 
 add_compile_options(${avahi-client_CFLAGS_OTHER})
