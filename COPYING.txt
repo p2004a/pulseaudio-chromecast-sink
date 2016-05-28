@@ -1,0 +1,7 @@
+This software is licensed under Gnu General Public License, see file GPLv3.txt
+for the full text of the license.
+
+Files in the third-party directory are dependencies that are redistributed
+under their own independent licenses stated in their corresponding directories. 
+
+Moreover all below files are licenses under different licenses:

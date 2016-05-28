@@ -11,3 +11,8 @@ Build
     $ cmake ..
     $ make
 
+
+License
+-------
+
+For licensing information see file [COPYING.txt](COPYING.txt).
