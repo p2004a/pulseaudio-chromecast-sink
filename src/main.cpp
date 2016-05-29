@@ -76,8 +76,10 @@ int main() {
                     std::cout << "Chromecast: " << name << " "
                               << (activate ? "Activated!" : "Deactivated!") << std::endl;
                 });
-                sink->set_volume_callback([name = info.name](double left, double right) {
-                    std::cout << "Chromecast: " << name << " volume: " << left;
+                sink->set_volume_callback([name = info.name](double left, double right,
+                                                             bool muted) {
+                    std::cout << "Chromecast: " << name << " [" << (muted ? "M" : " ")
+                              << "] volume: " << left;
                     if (left != right) {
                         std::cout << " " << right;
                     }

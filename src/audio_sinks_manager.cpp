@@ -556,13 +556,15 @@ void AudioSinksManager::InternalAudioSink::sink_info_callback(pa_context* /*c*/,
         assert(sink->sink_idx == info->index);
     }
 
-    if (!pa_cvolume_equal(&sink->volume, &info->volume)) {
+    if (!pa_cvolume_equal(&sink->volume, &info->volume) || sink->muted != info->mute) {
         sink->volume = info->volume;
+        sink->muted = !!info->mute;
         assert(sink->volume.channels == 2);
         sink->manager->logger->trace("(AudioSink '{}') Volume changed", sink->name);
         if (sink->volume_callback) {
             sink->volume_callback(static_cast<double>(sink->volume.values[0]) / PA_VOLUME_NORM,
-                                  static_cast<double>(sink->volume.values[1]) / PA_VOLUME_NORM);
+                                  static_cast<double>(sink->volume.values[1]) / PA_VOLUME_NORM,
+                                  sink->muted);
         }
     }
 }

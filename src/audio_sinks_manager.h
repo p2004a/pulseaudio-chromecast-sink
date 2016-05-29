@@ -61,7 +61,7 @@ class AudioSinksManager {
     class InternalAudioSink : public std::enable_shared_from_this<InternalAudioSink> {
       public:
         typedef std::function<void(const AudioSample*, size_t)> SamplesCallback;
-        typedef std::function<void(double, double)> VolumeCallback;
+        typedef std::function<void(double, double, bool)> VolumeCallback;
         typedef std::function<void(bool)> ActivationCallback;
 
         InternalAudioSink(AudioSinksManager* manager_, std::string name_);
@@ -100,6 +100,7 @@ class AudioSinksManager {
         std::string name, identifier;
         uint32_t module_idx, sink_idx;
         pa_cvolume volume;
+        bool muted;
         State state;
         bool default_sink, activated;
         int num_sink_inputs;
