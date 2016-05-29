@@ -281,7 +281,8 @@ void AudioSinksManager::update_server_info() {
     if (op) {
         pa_operation_unref(op);
     } else {
-        logger->error("(AudioSinksManager) Failed to start getting server info", get_pa_error());
+        logger->error("(AudioSinksManager) Failed to start getting server info: {}",
+                      get_pa_error());
     }
 }
 
@@ -411,8 +412,9 @@ void AudioSinksManager::InternalAudioSink::free() {
         case State::LOADED: stop_sink(); break;
         case State::RECORDING:
             if (pa_stream_disconnect(stream) < 0) {
-                manager->logger->error("(AudioSink '{}') Failed to start disconnecting stream {}",
-                                       name, module_idx);
+                manager->logger->error(
+                        "(AudioSink '{}') Failed to start disconnecting stream {}: {}", name,
+                        module_idx, manager->get_pa_error());
                 pa_stream_unref(stream);
                 stream = nullptr;
                 stop_sink();
@@ -438,7 +440,8 @@ void AudioSinksManager::InternalAudioSink::start_sink() {
     if (op) {
         pa_operation_unref(op);
     } else {
-        manager->logger->error("(AudioSink '{}') Failed to start loading module", name);
+        manager->logger->error("(AudioSink '{}') Failed to start loading module: {}", name,
+                               manager->get_pa_error());
         state = State::DEAD;
         manager->unregister_audio_sink(shared_from_this());
     }
@@ -451,9 +454,8 @@ void AudioSinksManager::InternalAudioSink::stop_sink() {
     if (op) {
         pa_operation_unref(op);
     } else {
-        manager->logger->error(
-                "(AudioSink '{}') Failed to start unloading start unloading module {}", name,
-                module_idx);
+        manager->logger->error("(AudioSink '{}') Failed to start unloading module {}: {}", name,
+                               module_idx, manager->get_pa_error());
         state = State::DEAD;
         manager->unregister_audio_sink(shared_from_this());
     }
@@ -464,8 +466,8 @@ void AudioSinksManager::InternalAudioSink::module_load_callback(pa_context* /*c*
     AudioSinksManager::InternalAudioSink* sink =
             static_cast<AudioSinksManager::InternalAudioSink*>(userdata);
     if (idx == static_cast<uint32_t>(-1)) {
-        sink->manager->logger->error("(AudioSink '{}') Failed to load module {}: ", sink->name, idx,
-                                     sink->manager->get_pa_error());
+        sink->manager->logger->error("(AudioSink '{}') Failed to load module {}: {}", sink->name,
+                                     idx, sink->manager->get_pa_error());
         sink->state = State::DEAD;
         sink->manager->unregister_audio_sink(sink->shared_from_this());
         return;
@@ -616,7 +618,7 @@ void AudioSinksManager::InternalAudioSink::stream_read_callback(pa_stream* /*str
     const void* data;
     size_t data_size;
     if (pa_stream_peek(sink->stream, &data, &data_size) < 0) {
-        sink->manager->logger->error("(AudioSink '{}') Failed to read data from stream: ",
+        sink->manager->logger->error("(AudioSink '{}') Failed to read data from stream: {}",
                                      sink->name, sink->manager->get_pa_error());
         return;
     }
@@ -637,7 +639,7 @@ void AudioSinksManager::InternalAudioSink::stream_read_callback(pa_stream* /*str
     }
 
     if (pa_stream_drop(sink->stream) < 0) {
-        sink->manager->logger->error("(AudioSink '{}') Failed to drop data from stream: ",
+        sink->manager->logger->error("(AudioSink '{}') Failed to drop data from stream: {}",
                                      sink->name, sink->manager->get_pa_error());
     }
 }
