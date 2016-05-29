@@ -73,7 +73,7 @@ class AudioSinksManager {
         void set_samples_callback(SamplesCallback);
         void set_activation_callback(ActivationCallback);
         void set_volume_callback(VolumeCallback);
-        void free();
+        void free(bool user = false);
         void start_sink();
 
         void set_is_default_sink(bool b);

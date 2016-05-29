@@ -401,7 +401,7 @@ uint32_t AudioSinksManager::InternalAudioSink::get_sink_idx() const {
     return sink_idx;
 }
 
-void AudioSinksManager::InternalAudioSink::free() {
+void AudioSinksManager::InternalAudioSink::free(bool user) {
     assert(manager->pa_mainloop.get_strand().running_in_this_thread());
     static const char* state_name[] = {"NONE", "STARTED", "LOADED", "RECORDING", "DEAD"};
     manager->logger->trace("(AudioSink '{}') Freeing, state: {}", name,
@@ -419,9 +419,10 @@ void AudioSinksManager::InternalAudioSink::free() {
             break;
         case State::DEAD: return;
     }
-    if (activated && activation_callback) {
+    if (activated && activation_callback && !user) {
         activation_callback(false);
     }
+    activated = false;
     state = State::DEAD;
 }
 
@@ -703,7 +704,7 @@ AudioSink::AudioSink(std::shared_ptr<AudioSinksManager::InternalAudioSink> inter
 
 AudioSink::~AudioSink() {
     internal_audio_sink->manager->pa_mainloop.get_strand().dispatch([sink = internal_audio_sink]() {
-        sink->free();
+        sink->free(true);
     });
 }
 
