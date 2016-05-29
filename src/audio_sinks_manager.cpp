@@ -415,12 +415,12 @@ void AudioSinksManager::InternalAudioSink::free() {
                 manager->logger->error(
                         "(AudioSink '{}') Failed to start disconnecting stream {}: {}", name,
                         module_idx, manager->get_pa_error());
-                pa_stream_unref(stream);
-                stream = nullptr;
-                stop_sink();
             }
             break;
         case State::DEAD: return;
+    }
+    if (activated && activation_callback) {
+        activation_callback(false);
     }
     state = State::DEAD;
 }
@@ -601,6 +601,7 @@ void AudioSinksManager::InternalAudioSink::stream_state_change_callback(pa_strea
             sink->manager->logger->error("(AudioSink '{}') Stream failed: {}", sink->name,
                                          sink->manager->get_pa_error());
             sink->state = State::DEAD;
+        // FALLTHROUGH
         case PA_STREAM_TERMINATED:
             pa_stream_unref(sink->stream);
             sink->stream = nullptr;
@@ -679,6 +680,7 @@ void AudioSinksManager::InternalAudioSink::update_sink_inputs_num(int difference
 }
 
 void AudioSinksManager::InternalAudioSink::update_activated() {
+    if (state == State::DEAD) return;
     if (activated && !default_sink && num_sink_inputs == 0) {
         activated = false;
         manager->logger->debug("(AudioSink '{}') Deactivated", name);
