@@ -120,6 +120,9 @@ class AudioSinksManager {
     static void server_info_callback(pa_context* c, const pa_server_info* info, void* userdata);
     void update_sink_input_map(uint32_t sink, pa_subscription_event_type_t event_type);
     void update_server_info();
+    uint32_t remove_input_sink(uint32_t input_idx);
+    void add_input_sink(uint32_t input_idx, uint32_t sink_idx);
+    void try_update_sink_input_nums(uint32_t sink_idx, int difference);
 
     void report_error(const std::string& message);
     std::string get_pa_error() const;
@@ -135,7 +138,8 @@ class AudioSinksManager {
     // insert in InternalAudioSink::sink_info_callback,
     // remove in AudioSinksManager::unregister_audio_sink
     std::unordered_map<uint32_t, std::shared_ptr<InternalAudioSink>> sink_idx_audio_sink;
-    // all updates in AudioSinksManager::sink_input_info_callback
+    // insert in AudioSinksManager::add_input_sink
+    // remove in AudioSinksManager::remove_input_sink
     std::unordered_map<uint32_t, uint32_t> sink_inputs_sinks;
     // insert in AudioSinksManager::create_new_sink
     // remove in AudioSinksManager::unregister_audio_sink

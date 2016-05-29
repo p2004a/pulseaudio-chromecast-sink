@@ -180,8 +180,13 @@ void AudioSinksManager::context_subscription_callback(pa_context* /*c*/,
     if (manager->stopping) return;
 
     if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK_INPUT) {
-        manager->update_sink_input_map(idx, static_cast<pa_subscription_event_type_t>(
-                                                    t & PA_SUBSCRIPTION_EVENT_TYPE_MASK));
+        if ((t & PA_SUBSCRIPTION_EVENT_TYPE_MASK) == PA_SUBSCRIPTION_EVENT_REMOVE) {
+            uint32_t sink_idx = manager->remove_input_sink(idx);
+            manager->try_update_sink_input_nums(sink_idx, -1);
+        } else {
+            manager->update_sink_input_map(idx, static_cast<pa_subscription_event_type_t>(
+                                                        t & PA_SUBSCRIPTION_EVENT_TYPE_MASK));
+        }
     } else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SERVER) {
         manager->update_server_info();
     } else if ((t & PA_SUBSCRIPTION_EVENT_FACILITY_MASK) == PA_SUBSCRIPTION_EVENT_SINK &&
@@ -221,6 +226,27 @@ void AudioSinksManager::update_sink_input_map(uint32_t sink_idx,
     }
 }
 
+uint32_t AudioSinksManager::remove_input_sink(uint32_t input_idx) {
+    uint32_t result = static_cast<uint32_t>(-1);
+    auto it = sink_inputs_sinks.find(input_idx);
+    if (it != sink_inputs_sinks.end()) {
+        result = it->second;
+        sink_inputs_sinks.erase(it);
+    }
+    return result;
+}
+
+void AudioSinksManager::add_input_sink(uint32_t input_idx, uint32_t sink_idx) {
+    sink_inputs_sinks[input_idx] = sink_idx;
+}
+
+void AudioSinksManager::try_update_sink_input_nums(uint32_t sink_idx, int difference) {
+    auto it = sink_idx_audio_sink.find(sink_idx);
+    if (it != sink_idx_audio_sink.end()) {
+        it->second->update_sink_inputs_num(difference);
+    }
+}
+
 void AudioSinksManager::sink_input_info_callback(pa_context* /*c*/, const pa_sink_input_info* info,
                                                  int eol, void* userdata) {
     SinkInfoRequest* info_request = static_cast<SinkInfoRequest*>(userdata);
@@ -233,33 +259,19 @@ void AudioSinksManager::sink_input_info_callback(pa_context* /*c*/, const pa_sin
     if (!info) return;
     if (manager->stopping) return;
 
-    auto remove_sink_input = [manager, info] {
-        auto sink_inputs_sinks_it = manager->sink_inputs_sinks.find(info->index);
-        if (sink_inputs_sinks_it != manager->sink_inputs_sinks.end()) {
-            auto sink_idx_audio_sink_it =
-                    manager->sink_idx_audio_sink.find(sink_inputs_sinks_it->second);
-            if (sink_idx_audio_sink_it != manager->sink_idx_audio_sink.end()) {
-                sink_idx_audio_sink_it->second->update_sink_inputs_num(-1);
-            }
-            manager->sink_inputs_sinks.erase(sink_inputs_sinks_it);
-        }
-    };
-
-    auto add_sink_input = [manager, info] {
-        manager->sink_inputs_sinks[info->index] = info->sink;
-        auto sink_idx_audio_sink_it = manager->sink_idx_audio_sink.find(info->sink);
-        if (sink_idx_audio_sink_it != manager->sink_idx_audio_sink.end()) {
-            sink_idx_audio_sink_it->second->update_sink_inputs_num(1);
-        }
-    };
-
     switch (info_request->event_type) {
-        case PA_SUBSCRIPTION_EVENT_NEW: add_sink_input(); break;
-        case PA_SUBSCRIPTION_EVENT_CHANGE:
-            remove_sink_input();
-            add_sink_input();
+        case PA_SUBSCRIPTION_EVENT_NEW:
+            manager->add_input_sink(info->index, info->sink);
+            manager->try_update_sink_input_nums(info->sink, 1);
+        case PA_SUBSCRIPTION_EVENT_CHANGE: {
+            uint32_t removed_sink_idx = manager->remove_input_sink(info->index);
+            manager->add_input_sink(info->index, info->sink);
+            if (removed_sink_idx != info->sink) {
+                manager->try_update_sink_input_nums(removed_sink_idx, -1);
+                manager->try_update_sink_input_nums(info->sink, 1);
+            }
             break;
-        case PA_SUBSCRIPTION_EVENT_REMOVE: remove_sink_input(); break;
+        }
         default: assert(false && "Unexpected subscribtion event type");
     }
 }
@@ -538,6 +550,8 @@ void AudioSinksManager::InternalAudioSink::sink_info_callback(pa_context* /*c*/,
         sink->manager->logger->debug("(AudioSink '{}') Sink idx is: {}", sink->name,
                                      sink->sink_idx);
         sink->manager->sink_idx_audio_sink.emplace(sink->sink_idx, sink->shared_from_this());
+    } else {
+        assert(sink->sink_idx == info->index);
     }
 
     if (!pa_cvolume_equal(&sink->volume, &info->volume)) {
