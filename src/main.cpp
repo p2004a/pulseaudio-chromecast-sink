@@ -27,9 +27,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include "audio_sinks_manager.h"
-#include "chromecast_finder.h"
-#include "defer.h"
+#include "chromecasts_manager.h"
 
 int main() {
     auto default_logger = spdlog::stdout_logger_mt("default", true /*use color*/);
@@ -38,76 +36,17 @@ int main() {
 
     boost::asio::io_service io_service;
 
-    AudioSinksManager sinks_manager(io_service);
-    std::unordered_map<std::string, std::shared_ptr<AudioSink>> sinks;
-
-    ChromecastFinder finder(io_service, [&](ChromecastFinder::UpdateType type,
-                                            ChromecastFinder::ChromecastInfo info) {
-        auto print_stuff = [&] {
-            std::cout << "\t";
-            for (auto& entry : info.dns) {
-                std::cout << entry.first << "=" << entry.second << " ";
-            }
-            std::cout << "\n\t";
-            for (auto& entry : info.endpoints) {
-                std::cout << entry << " ";
-            }
-            std::cout << std::endl;
-        };
-
-        switch (type) {
-            case ChromecastFinder::UpdateType::NEW:
-                std::cout << "NEW Chromecast: " << info.name << std::endl;
-                print_stuff();
-                break;
-            case ChromecastFinder::UpdateType::UPDATE:
-                std::cout << "UPDATE Chromecast: " << info.name << std::endl;
-                print_stuff();
-                break;
-            case ChromecastFinder::UpdateType::REMOVE:
-                std::cout << "REMOVE Chromecast: " << info.name << std::endl;
-                break;
-        }
-
-        switch (type) {
-            case ChromecastFinder::UpdateType::NEW: {
-                auto sink = sinks_manager.create_new_sink(info.name);
-                sink->set_activation_callback([name = info.name](bool activate) {
-                    std::cout << "Chromecast: " << name << " "
-                              << (activate ? "Activated!" : "Deactivated!") << std::endl;
-                });
-                sink->set_volume_callback([name = info.name](double left, double right,
-                                                             bool muted) {
-                    std::cout << "Chromecast: " << name << " [" << (muted ? "M" : " ")
-                              << "] volume: " << left;
-                    if (left != right) {
-                        std::cout << " " << right;
-                    }
-                    std::cout << std::endl;
-                });
-                sinks[info.name] = sink;
-                break;
-            }
-            case ChromecastFinder::UpdateType::UPDATE: break;
-            case ChromecastFinder::UpdateType::REMOVE: sinks.erase(info.name); break;
-        }
-    });
+    ChromecastsManager manager(io_service, "default");
 
     boost::asio::signal_set signals(io_service, SIGINT, SIGTERM);
 
     auto stop_everything = [&] {
-        finder.stop();
-        sinks_manager.stop();
+        manager.stop();
         signals.cancel();
     };
 
-    finder.set_error_handler([&](const std::string& message) {
-        default_logger->critical("ChromecastFinder: {}", message);
-        stop_everything();
-    });
-
-    sinks_manager.set_error_handler([&](const std::string& message) {
-        default_logger->critical("AudioSinksManager: {}", message);
+    manager.set_error_handler([&](const std::string& message) {
+        default_logger->critical("ChromecastsManager: {}", message);
         stop_everything();
     });
 
