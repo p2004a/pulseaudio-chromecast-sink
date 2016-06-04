@@ -26,6 +26,7 @@
 #include "audio_sinks_manager.h"
 #include "chromecast_connection.h"
 #include "chromecast_finder.h"
+#include "websocket_broadcaster.h"
 
 class ChromecastsManagerException : public std::runtime_error {
   public:
@@ -90,6 +91,7 @@ class ChromecastsManager {
     boost::asio::io_service& io_service;
     AudioSinksManager sinks_manager;
     ChromecastFinder finder;
+    WebsocketBroadcaster broadcaster;
     std::unordered_map<std::string, std::shared_ptr<Chromecast>> chromecasts;
     ErrorHandler error_handler;
 

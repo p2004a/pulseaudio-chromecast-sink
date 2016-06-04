@@ -24,7 +24,8 @@ ChromecastsManager::ChromecastsManager(boost::asio::io_service& io_service_,
         : io_service(io_service_), sinks_manager(io_service, logger_name),
           finder(io_service, std::bind(&ChromecastsManager::finder_callback, this,
                                        std::placeholders::_1, std::placeholders::_2),
-                 logger_name) {
+                 logger_name),
+          broadcaster(io_service), error_handler(nullptr) {
     logger = spdlog::get(logger_name);
 
     finder.set_error_handler([this](const std::string& message) {
@@ -55,6 +56,7 @@ void ChromecastsManager::finder_callback(ChromecastFinder::UpdateType type,
 void ChromecastsManager::stop() {
     finder.stop();
     sinks_manager.stop();
+    broadcaster.stop();
 }
 
 void ChromecastsManager::set_error_handler(ErrorHandler error_handler_) {
@@ -169,6 +171,7 @@ void Chromecast::connection_connected_handler(bool connected) {
     } else {
         manager.logger->info("(Chromecast '{}') I'm not connected!", info.name);
         connection.reset();
+        // TODO: try to reconnect
     }
     // TODO: start protcol
 }

@@ -29,6 +29,7 @@ find_package(Boost 1.58 REQUIRED COMPONENTS thread system iostreams)
 find_package(OpenSSL REQUIRED)
 find_package(spdlog REQUIRED)
 find_package(PkgConfig REQUIRED)
+find_package(websocketpp REQUIRED)
 pkg_search_module(avahi-client REQUIRED avahi-client)
 pkg_search_module(libpulse REQUIRED libpulse)
 
@@ -38,7 +39,8 @@ include_directories(${Boost_INCLUDE_DIRS}
                     ${avahi-client_INCLUDE_DIRS}
                     ${libpulse_INCLUDE_DIRS}
                     ${spdlog_INCLUDE_DIRS}
-                    ${CMAKE_CURRENT_BINARY_DIR})
+                    ${CMAKE_CURRENT_BINARY_DIR}
+                    ${websocketpp_INCLUDE_DIR})
 
 add_compile_options(${avahi-client_CFLAGS_OTHER})
 
@@ -50,7 +52,8 @@ set(SOURCE_FILES src/main.cpp
                  src/asio_pa_mainloop_api.cpp
                  src/audio_sinks_manager.cpp
                  src/chromecast_connection.cpp
-                 src/chromecasts_manager.cpp)
+                 src/chromecasts_manager.cpp
+                 src/websocket_broadcaster.cpp)
 
 add_executable(prog ${SOURCE_FILES})
 target_link_libraries(prog pthread
