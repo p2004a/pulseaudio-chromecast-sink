@@ -116,7 +116,7 @@ void Chromecast::activation_callback(bool activate) {
     if (activated) {
         manager.logger->info("(Chromecast '{}') Activated!", info.name);
         connection = std::make_shared<ChromecastConnection>(
-                manager.io_service, info.endpoints.begin(), info.endpoints.end(),
+                manager.io_service, *info.endpoints.begin(),
                 strand.wrap([weak_ptr = my_weak_from_this()](std::string message) {
                     if (auto ptr = weak_ptr.lock()) {
                         ptr->connection_error_handler(message);
@@ -168,6 +168,7 @@ void Chromecast::connection_connected_handler(bool connected) {
         connection->send_message(message);
     } else {
         manager.logger->info("(Chromecast '{}') I'm not connected!", info.name);
+        connection.reset();
     }
     // TODO: start protcol
 }

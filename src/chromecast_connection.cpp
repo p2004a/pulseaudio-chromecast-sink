@@ -27,6 +27,18 @@
 
 #include "chromecast_connection.h"
 
+ChromecastConnection::ChromecastConnection(boost::asio::io_service& io_service_,
+                                           boost::asio::ip::tcp::endpoint endpoint,
+                                           ErrorHandler error_handler_,
+                                           MessagesHandler messages_handler_,
+                                           ConnectedHandler connected_handler_,
+                                           const char* logger_name)
+        : connection_implementation(Implementation::create(io_service_, error_handler_,
+                                                           messages_handler_, connected_handler_,
+                                                           logger_name)) {
+    connection_implementation->connect(endpoint);
+}
+
 ChromecastConnection::~ChromecastConnection() {
     connection_implementation->disconnect();
 }
@@ -44,23 +56,38 @@ ChromecastConnection::Implementation::Implementation(boost::asio::io_service& io
 }
 
 std::shared_ptr<ChromecastConnection::Implementation> ChromecastConnection::Implementation::create(
-        boost::asio::io_service& io_service_, ErrorHandler error_handler_,
+        boost::asio::io_service& io_service_, ErrorHandler report_error_,
         MessagesHandler messages_handler_, ConnectedHandler connected_handler_,
         const char* logger_name) {
-    return std::make_shared<Implementation>(io_service_, error_handler_, messages_handler_,
+    return std::make_shared<Implementation>(io_service_, report_error_, messages_handler_,
                                             connected_handler_, logger_name, private_tag{});
 }
 
+void ChromecastConnection::Implementation::connect(boost::asio::ip::tcp::endpoint endpoint_) {
+    endpoint = endpoint_;
+    logger->info("Connecting to {}", endpoint.address());
+
+    socket.lowest_layer().async_connect(endpoint, [
+        this, this_ptr = shared_from_this()
+    ](const boost::system::error_code& error) { connect_handler(error); });
+}
+
 void ChromecastConnection::Implementation::disconnect() {
-    logger->trace("ChromecastConnection) Disconnecting");
-    connected_handler(false);
-    socket.lowest_layer().cancel();
+    if (socket.lowest_layer().is_open()) {
+        logger->trace("ChromecastConnection) Disconnecting");
+        socket.lowest_layer().cancel();
+    }
+}
+
+void ChromecastConnection::Implementation::report_error(std::string message) {
+    socket.lowest_layer().close();
+    error_handler(message);
 }
 
 void ChromecastConnection::Implementation::connect_handler(const boost::system::error_code& error) {
     if (error) {
         if (error != boost::asio::error::operation_aborted) {
-            error_handler("Failed to connect to Chromecast: " + error.message());
+            report_error("Failed to connect to Chromecast: " + error.message());
         }
     } else {
         socket.async_handshake(boost::asio::ssl::stream_base::client, [
@@ -73,11 +100,34 @@ void ChromecastConnection::Implementation::handshake_handler(
         const boost::system::error_code& error) {
     if (error) {
         if (error != boost::asio::error::operation_aborted) {
-            error_handler("TLS handshake failed: " + error.message());
+            report_error("TLS handshake failed: " + error.message());
         }
     } else {
         connected_handler(true);
         read_message();
+    }
+}
+
+bool ChromecastConnection::Implementation::is_connection_end(
+        const boost::system::error_code& error) {
+    if (error == boost::asio::error::eof) {
+        logger->warn("ChromecastConnection) Got error::eof, that was unexpected");
+    }
+    return (error.category() == boost::asio::error::get_ssl_category() &&
+            error.value() == ERR_PACK(ERR_LIB_SSL, 0, SSL_R_SHORT_READ)) ||
+           error == boost::asio::error::eof;
+}
+
+void ChromecastConnection::Implementation::read_op_handler_error(
+        const boost::system::error_code& error) {
+    if (error == boost::asio::error::operation_aborted) {
+        if (socket.lowest_layer().is_open()) {
+            shutdown_tls();
+        }
+    } else if (is_connection_end(error)) {
+        connected_handler(false);
+    } else {
+        report_error("Read message header operation failed: " + error.message());
     }
 }
 
@@ -100,13 +150,12 @@ void ChromecastConnection::Implementation::send_message(const cast_channel::Cast
 void ChromecastConnection::Implementation::shutdown_tls() {
     socket.async_shutdown(
             [ this, this_ptr = shared_from_this() ](const boost::system::error_code& error) {
-                if (error.category() == boost::asio::error::get_ssl_category() &&
-                    error.value() == ERR_PACK(ERR_LIB_SSL, 0, SSL_R_SHORT_READ)) {
+                if (is_connection_end(error)) {
                     logger->trace("ChromecastConnection) TLS connection closed");
+                    socket.lowest_layer().close();
                 } else {
-                    error_handler("Shutting down TLS connection failed " + error.message());
+                    report_error("Shutting down TLS connection failed " + error.message());
                 }
-                socket.lowest_layer().close();
             });
 }
 
@@ -119,7 +168,7 @@ void ChromecastConnection::Implementation::write_from_queue() {
     ](const boost::system::error_code& error, const size_t) {
         if (error) {
             if (error != boost::asio::error::operation_aborted) {
-                error_handler("Writing data to socket failed: " + error.message());
+                report_error("Writing data to socket failed: " + error.message());
             }
         } else {
             logger->trace("(ChromecastConnection) Wrote message!");
@@ -140,13 +189,7 @@ void ChromecastConnection::Implementation::read_message() {
 void ChromecastConnection::Implementation::handle_header_read(
         const boost::system::error_code& error) {
     if (error) {
-        if (error == boost::asio::error::operation_aborted) {
-            shutdown_tls();
-        } else if (error == boost::asio::error::eof) {
-            connected_handler(false);
-        } else {
-            error_handler("Read message header operation failed: " + error.message());
-        }
+        read_op_handler_error(error);
     } else {
         uint32_t length = be32toh(message_header.be_length);
         logger->trace("(ChromecastConnection) We have header! size: {}", length);
@@ -168,15 +211,7 @@ void ChromecastConnection::Implementation::handle_header_read(
 void ChromecastConnection::Implementation::handle_message_data_read(
         const boost::system::error_code& error, std::size_t size) {
     if (error) {
-        if (error == boost::asio::error::operation_aborted) {
-            shutdown_tls();
-        } else if (error == boost::asio::error::eof) {
-            logger->warn(
-                    "(ChromecastConnection) Got message header but reading body ended with eof");
-            connected_handler(false);
-        } else {
-            error_handler("Read message body operation failed: " + error.message());
-        }
+        read_op_handler_error(error);
     } else {
         logger->trace("(ChromecastConnection) We got message body! size: {}", size);
         cast_channel::CastMessage message;

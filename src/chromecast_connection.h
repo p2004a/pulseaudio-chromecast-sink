@@ -40,10 +40,10 @@ class ChromecastConnection {
 
     ChromecastConnection(const ChromecastConnection&) = delete;
 
-    template <class It>
-    ChromecastConnection(boost::asio::io_service& io_service_, It endpoint_begin, It endpoint_end,
-                         ErrorHandler error_handler_, MessagesHandler messages_handler_,
-                         ConnectedHandler connected_handler_, const char* logger_name = "default");
+    ChromecastConnection(boost::asio::io_service& io_service_,
+                         boost::asio::ip::tcp::endpoint endpoint, ErrorHandler error_handler_,
+                         MessagesHandler messages_handler_, ConnectedHandler connected_handler_,
+                         const char* logger_name = "default");
 
     ~ChromecastConnection();
 
@@ -71,14 +71,15 @@ class ChromecastConnection {
 
         void send_message(const cast_channel::CastMessage& message);
 
-        template <class It>
-        void connect(It endpoint_begin, It endpoint_end);
+        void connect(boost::asio::ip::tcp::endpoint endpoint_);
         void disconnect();
 
       private:
         void connect_handler(const boost::system::error_code& error);
         void handshake_handler(const boost::system::error_code& error);
-
+        void report_error(std::string message);
+        bool is_connection_end(const boost::system::error_code& error);
+        void read_op_handler_error(const boost::system::error_code& error);
         void shutdown_tls();
         void write_from_queue();
         void read_message();
@@ -93,6 +94,7 @@ class ChromecastConnection {
         ErrorHandler error_handler;
         MessagesHandler messages_handler;
         ConnectedHandler connected_handler;
+        boost::asio::ip::tcp::endpoint endpoint;
 
         std::deque<std::pair<std::shared_ptr<char>, std::size_t>> write_queue;
         union {
@@ -105,24 +107,3 @@ class ChromecastConnection {
 
     std::shared_ptr<Implementation> connection_implementation;
 };
-
-template <class It>
-ChromecastConnection::ChromecastConnection(boost::asio::io_service& io_service_, It endpoint_begin,
-                                           It endpoint_end, ErrorHandler error_handler_,
-                                           MessagesHandler messages_handler_,
-                                           ConnectedHandler connected_handler_,
-                                           const char* logger_name)
-        : connection_implementation(Implementation::create(io_service_, error_handler_,
-                                                           messages_handler_, connected_handler_,
-                                                           logger_name)) {
-    connection_implementation->connect(endpoint_begin, endpoint_end);
-}
-
-template <class It>
-void ChromecastConnection::Implementation::connect(It endpoint_begin, It endpoint_end) {
-    logger->info("Connecting to {}", *endpoint_begin);
-
-    boost::asio::async_connect(socket.lowest_layer(), endpoint_begin, endpoint_end, [
-        this, this_ptr = shared_from_this()
-    ](const boost::system::error_code& error, It) { connect_handler(error); });
-}
