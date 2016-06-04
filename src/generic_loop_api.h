@@ -81,7 +81,7 @@ class IOEvent {
     std::tuple<Userdata...> userdata;
     callback_t callback;
     destroy_callback_t destroy_callback;
-    bool dead;
+    bool dead, updated;
     IOEventFlags current_flags;
 };
 

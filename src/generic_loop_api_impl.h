@@ -73,6 +73,7 @@ void IOEvent<Userdata...>::update(IOEventFlags flags) {
     assert(!dead && strand.running_in_this_thread());
     socket.cancel();
     start_monitor(flags);
+    updated = true;
 }
 
 template <class... Userdata>
@@ -86,16 +87,19 @@ void IOEvent<Userdata...>::event_handler(IOEventFlags flag,
                                          const boost::system::error_code& error) {
     if (error == boost::asio::error::operation_aborted) return;
     if (dead) return;
-    start_monitor(flag);
 
     current_flags = flag;
     if (error && error != boost::asio::error::eof) {
         current_flags |= IOEventFlags::ERROR;
     }
 
+    updated = false;
     call(callback,
          std::tuple_cat(std::make_tuple(this, socket.native_handle(), current_flags), userdata));
     current_flags = IOEventFlags::NONE;
+    if (!updated && !dead) {
+        start_monitor(flag);
+    }
 }
 
 template <class... Userdata>
