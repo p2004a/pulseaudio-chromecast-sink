@@ -23,10 +23,14 @@
 #include <boost/asio/io_service.hpp>
 #include <boost/asio/ip/tcp.hpp>
 
+#include <json.hpp>
+
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
 #include "websocket_broadcaster.h"
+
+using json = nlohmann::json;
 
 WebsocketBroadcaster::WebsocketBroadcaster(boost::asio::io_service& io_service_,
                                            const char* logger_name)
@@ -55,10 +59,21 @@ WebsocketBroadcaster::WebsocketBroadcaster(boost::asio::io_service& io_service_,
 }
 
 void WebsocketBroadcaster::on_message(websocketpp::connection_hdl hdl,
-                                      WebsocketServer::message_ptr message) {
+                                      WebsocketServer::message_ptr message) try {
     std::string payload = message->get_payload();
     logger->trace("(WebsocketBroadcaster) Got message: {}", payload);
-    // TODO: do something with payload
+    auto json_msg = json::parse(payload);
+    std::string type = json_msg["type"];
+    if (type == "SUBSCRIBE") {
+        std::string chromecast_name = json_msg["name"];
+        logger->trace("(WebsocketBroadcaster) Chromecast {} subscribed", chromecast_name);
+    } else {
+        logger->warn("(WebsocketBroadcaster) Unexpected message type: {}", type);
+    }
+} catch (std::invalid_argument) {
+    logger->warn("(WebsocketBroadcaster) Failed to parse JSON message from connection");
+} catch (std::domain_error) {
+    logger->warn("(WebsocketBroadcaster) JSON message didn't have expected fields");
 }
 
 void WebsocketBroadcaster::stop() {
@@ -83,7 +98,7 @@ void WebsocketBroadcaster::on_close(websocketpp::connection_hdl hdl) {
     connections.erase(hdl);
 }
 
-void WebsocketBroadcaster::on_socket_init(websocketpp::connection_hdl hdl,
+void WebsocketBroadcaster::on_socket_init(websocketpp::connection_hdl /*hdl*/,
                                           boost::asio::ip::tcp::socket& s) {
     logger->trace("(WebsocketBroadcaster) Setting new socket tcp::no_delay option");
     boost::asio::ip::tcp::no_delay option(true);

@@ -40,7 +40,8 @@ include_directories(${Boost_INCLUDE_DIRS}
                     ${libpulse_INCLUDE_DIRS}
                     ${spdlog_INCLUDE_DIRS}
                     ${CMAKE_CURRENT_BINARY_DIR}
-                    ${websocketpp_INCLUDE_DIR})
+                    ${websocketpp_INCLUDE_DIR}
+                    third-party/nlohmann-json/src/)
 
 add_compile_options(${avahi-client_CFLAGS_OTHER})
 

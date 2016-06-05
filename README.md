@@ -12,6 +12,8 @@ OpenSSL.
 
 The build process also requires `protoc` protobuf compiler to be installed.
 
+    $ git clone --recursive https://github.com/p2004a/pulseaudio-chromecast-sink
+    # cd pulseaudio-chromecast-sink
     $ mkdir build
     $ cd build
     $ cmake .. -DCMAKE_BUILD_TYPE=Release
