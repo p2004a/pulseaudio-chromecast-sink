@@ -78,24 +78,26 @@ void WebsocketBroadcaster::on_message(websocketpp::connection_hdl hdl,
 
 void WebsocketBroadcaster::stop() {
     ws_server.stop_listening();
-    for (auto hdl : connections) {
-        try {
-            logger->trace("(WebsocketBroadcaster) stopping connection");
-            ws_server.close(hdl, websocketpp::close::status::normal, "");
-        } catch (websocketpp::lib::error_code ec) {
-            logger->error("(WebsocketBroadcaster) closing connection failed: {}", ec);
+    connections_strand.dispatch([this] {
+        for (auto hdl : connections) {
+            try {
+                logger->trace("(WebsocketBroadcaster) stopping connection");
+                ws_server.close(hdl, websocketpp::close::status::normal, "");
+            } catch (websocketpp::lib::error_code ec) {
+                logger->error("(WebsocketBroadcaster) closing connection failed: {}", ec);
+            }
         }
-    }
+    });
 }
 
 void WebsocketBroadcaster::on_open(websocketpp::connection_hdl hdl) {
     logger->trace("(WebsocketBroadcaster) New connection");
-    connections.insert(hdl);
+    connections_strand.dispatch([this, hdl] { connections.insert(hdl); });
 }
 
 void WebsocketBroadcaster::on_close(websocketpp::connection_hdl hdl) {
     logger->trace("(WebsocketBroadcaster) Closed connection");
-    connections.erase(hdl);
+    connections_strand.dispatch([this, hdl] { connections.erase(hdl); });
 }
 
 void WebsocketBroadcaster::on_socket_init(websocketpp::connection_hdl /*hdl*/,

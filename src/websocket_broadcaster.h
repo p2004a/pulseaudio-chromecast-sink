@@ -44,7 +44,8 @@ class WebsocketBroadcaster {
     void on_socket_init(websocketpp::connection_hdl hdl, boost::asio::ip::tcp::socket& s);
 
     std::shared_ptr<spdlog::logger> logger;
-    std::set<websocketpp::connection_hdl, std::owner_less<websocketpp::connection_hdl>> connections;
     boost::asio::io_service& io_service;
+    boost::asio::io_service::strand connections_strand;
+    std::set<websocketpp::connection_hdl, std::owner_less<websocketpp::connection_hdl>> connections;
     WebsocketServer ws_server;
 };
