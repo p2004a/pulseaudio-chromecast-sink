@@ -33,12 +33,16 @@
 using json = nlohmann::json;
 
 WebsocketBroadcaster::WebsocketBroadcaster(boost::asio::io_service& io_service_,
+                                           SubscribeCallback subscribe_callback_,
                                            const char* logger_name)
-        : io_service(io_service_) {
+        : io_service(io_service_), connections_strand(io_service),
+          subscribe_callback(subscribe_callback_) {
     using namespace std::placeholders;
 
     logger = spdlog::get(logger_name);
     ws_server.init_asio(&io_service);
+    ws_server.clear_access_channels(websocketpp::log::alevel::all);
+    ws_server.clear_error_channels(websocketpp::log::elevel::all);
 
     ws_server.set_close_handler(std::bind(&WebsocketBroadcaster::on_close, this, _1));
     ws_server.set_open_handler(std::bind(&WebsocketBroadcaster::on_open, this, _1));
@@ -60,13 +64,21 @@ WebsocketBroadcaster::WebsocketBroadcaster(boost::asio::io_service& io_service_,
 
 void WebsocketBroadcaster::on_message(websocketpp::connection_hdl hdl,
                                       WebsocketServer::message_ptr message) try {
+    if (message->get_opcode() != websocketpp::frame::opcode::text) {
+        logger->warn("(WebsocketBroadcaster) Got non text message, ignoring");
+        return;
+    }
     std::string payload = message->get_payload();
     logger->trace("(WebsocketBroadcaster) Got message: {}", payload);
     auto json_msg = json::parse(payload);
     std::string type = json_msg["type"];
     if (type == "SUBSCRIBE") {
         std::string chromecast_name = json_msg["name"];
-        logger->trace("(WebsocketBroadcaster) Chromecast {} subscribed", chromecast_name);
+        logger->debug("(WebsocketBroadcaster) Chromecast {} subscribed", chromecast_name);
+        MessageHandler message_handler;
+        message_handler.hdl = hdl;
+        message_handler.this_ptr = this;
+        subscribe_callback(message_handler, chromecast_name);
     } else {
         logger->warn("(WebsocketBroadcaster) Unexpected message type: {}", type);
     }
@@ -105,4 +117,15 @@ void WebsocketBroadcaster::on_socket_init(websocketpp::connection_hdl /*hdl*/,
     logger->trace("(WebsocketBroadcaster) Setting new socket tcp::no_delay option");
     boost::asio::ip::tcp::no_delay option(true);
     s.set_option(option);
+}
+
+void WebsocketBroadcaster::send_samples(MessageHandler hdl, const AudioSample* samples,
+                                        size_t num) {
+    if (hdl.this_ptr == nullptr) return;
+    std::error_code error;
+    hdl.this_ptr->ws_server.send(hdl.hdl, samples, num * sizeof(AudioSample),
+                                 websocketpp::frame::opcode::binary, error);
+    if (error && error != websocketpp::error::value::bad_connection) {
+        hdl.this_ptr->logger->error("(WebsocketBroadcaster) Couldn't send data: {}", error);
+    }
 }

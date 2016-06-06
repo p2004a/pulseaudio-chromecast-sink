@@ -44,6 +44,8 @@ class Chromecast : public std::enable_shared_from_this<Chromecast> {
 
     void update_info(ChromecastFinder::ChromecastInfo info_);
 
+    void set_message_handler(WebsocketBroadcaster::MessageHandler handler);
+
     Chromecast(ChromecastsManager& manager_, ChromecastFinder::ChromecastInfo info_, private_tag);
 
     static std::shared_ptr<Chromecast> create(ChromecastsManager& manager_,
@@ -59,7 +61,6 @@ class Chromecast : public std::enable_shared_from_this<Chromecast> {
 
     void volume_callback(double left, double right, bool muted);
     void activation_callback(bool activate);
-    void samples_callback(const AudioSample* samples, size_t num);
     void connection_error_handler(std::string message);
     void connection_connected_handler(bool connected);
     void connection_message_handler(const cast_channel::CastMessage& message);
@@ -69,6 +70,8 @@ class Chromecast : public std::enable_shared_from_this<Chromecast> {
     ChromecastFinder::ChromecastInfo info;
     std::shared_ptr<ChromecastConnection> connection;
     boost::asio::io_service::strand strand;
+    std::mutex message_handler_mu;
+    WebsocketBroadcaster::MessageHandler message_handler;
     bool activated;
 };
 
@@ -85,14 +88,16 @@ class ChromecastsManager {
 
   private:
     void finder_callback(ChromecastFinder::UpdateType type, ChromecastFinder::ChromecastInfo info);
+    void websocket_subscribe_callback(WebsocketBroadcaster::MessageHandler, std::string);
     void propagate_error(const std::string& message);
 
     std::shared_ptr<spdlog::logger> logger;
     boost::asio::io_service& io_service;
+    boost::asio::io_service::strand chromecasts_strand;
+    std::unordered_map<std::string, std::shared_ptr<Chromecast>> chromecasts;
     AudioSinksManager sinks_manager;
     ChromecastFinder finder;
     WebsocketBroadcaster broadcaster;
-    std::unordered_map<std::string, std::shared_ptr<Chromecast>> chromecasts;
     ErrorHandler error_handler;
 
     friend class Chromecast;

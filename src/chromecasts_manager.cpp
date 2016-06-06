@@ -21,11 +21,16 @@
 
 ChromecastsManager::ChromecastsManager(boost::asio::io_service& io_service_,
                                        const char* logger_name)
-        : io_service(io_service_), sinks_manager(io_service, logger_name),
-          finder(io_service, std::bind(&ChromecastsManager::finder_callback, this,
-                                       std::placeholders::_1, std::placeholders::_2),
+        : io_service(io_service_), chromecasts_strand(io_service),
+          sinks_manager(io_service, logger_name),
+          finder(io_service,
+                 chromecasts_strand.wrap(std::bind(&ChromecastsManager::finder_callback, this,
+                                                   std::placeholders::_1, std::placeholders::_2)),
                  logger_name),
-          broadcaster(io_service), error_handler(nullptr) {
+          broadcaster(io_service, chromecasts_strand.wrap(std::bind(
+                                          &ChromecastsManager::websocket_subscribe_callback, this,
+                                          std::placeholders::_1, std::placeholders::_2))),
+          error_handler(nullptr) {
     logger = spdlog::get(logger_name);
 
     finder.set_error_handler([this](const std::string& message) {
@@ -38,6 +43,8 @@ ChromecastsManager::ChromecastsManager(boost::asio::io_service& io_service_,
 
 void ChromecastsManager::finder_callback(ChromecastFinder::UpdateType type,
                                          ChromecastFinder::ChromecastInfo info) {
+    assert(chromecasts_strand.running_in_this_thread());
+
     if (type == ChromecastFinder::UpdateType::NEW) {
         logger->info("New Chromecast '{}'", info.name);
     } else if (type == ChromecastFinder::UpdateType::REMOVE) {
@@ -50,6 +57,19 @@ void ChromecastsManager::finder_callback(ChromecastFinder::UpdateType type,
             break;
         case ChromecastFinder::UpdateType::UPDATE: chromecasts[info.name]->update_info(info); break;
         case ChromecastFinder::UpdateType::REMOVE: chromecasts.erase(info.name); break;
+    }
+}
+
+void ChromecastsManager::websocket_subscribe_callback(WebsocketBroadcaster::MessageHandler handler,
+                                                      std::string name) {
+    assert(chromecasts_strand.running_in_this_thread());
+
+    auto it = chromecasts.find(name);
+    if (it != chromecasts.end()) {
+        it->second->set_message_handler(handler);
+    } else {
+        logger->warn("(ChromecastsManager) Chromecast {} subscribed but is not known in manager",
+                     name);
     }
 }
 
@@ -77,19 +97,25 @@ Chromecast::Chromecast(ChromecastsManager& manager_, ChromecastFinder::Chromecas
 
 void Chromecast::init() {
     sink = manager.sinks_manager.create_new_sink(info.name);
+
     sink->set_activation_callback(strand.wrap([weak_ptr = my_weak_from_this()](bool a) {
         if (auto ptr = weak_ptr.lock()) {
             ptr->activation_callback(a);
         }
     }));
+
     sink->set_volume_callback(
             strand.wrap([weak_ptr = my_weak_from_this()](double l, double r, bool m) {
                 if (auto ptr = weak_ptr.lock()) {
                     ptr->volume_callback(l, r, m);
                 }
             }));
-    sink->set_samples_callback([this](const AudioSample* /*s*/, size_t /*n*/) {
-        // TODO: Handle samples
+
+    sink->set_samples_callback([weak_ptr = my_weak_from_this()](const AudioSample* s, size_t n) {
+        if (auto ptr = weak_ptr.lock()) {
+            std::lock_guard<std::mutex> guard(ptr->message_handler_mu);
+            WebsocketBroadcaster::send_samples(ptr->message_handler, s, n);
+        }
     });
 }
 
@@ -102,6 +128,11 @@ std::shared_ptr<Chromecast> Chromecast::create(ChromecastsManager& manager_,
 
 void Chromecast::update_info(ChromecastFinder::ChromecastInfo info_) {
     strand.dispatch([ =, this_ptr = shared_from_this() ] { info = info_; });
+}
+
+void Chromecast::set_message_handler(WebsocketBroadcaster::MessageHandler handler) {
+    std::lock_guard<std::mutex> guard(message_handler_mu);
+    message_handler = handler;
 }
 
 void Chromecast::volume_callback(double left, double right, bool muted) {
@@ -138,10 +169,6 @@ void Chromecast::activation_callback(bool activate) {
         manager.logger->info("(Chromecast '{}') Deactivated!", info.name);
         connection.reset();
     }
-}
-
-void Chromecast::samples_callback(const AudioSample* /*samples*/, size_t /*num*/) {
-    // TODO: handle samples
 }
 
 void Chromecast::connection_error_handler(std::string message) {

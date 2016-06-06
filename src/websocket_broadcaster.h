@@ -15,24 +15,38 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <functional>
 #include <set>
 
 #include <spdlog/spdlog.h>
 
 #include <boost/asio/io_service.hpp>
 
+#include <boost/asio/strand.hpp>
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
+
+#include "audio_sinks_manager.h"
 
 #pragma once
 
 class WebsocketBroadcaster {
   public:
+    struct MessageHandler {
+        websocketpp::connection_hdl hdl;
+        WebsocketBroadcaster* this_ptr = nullptr;
+    };
+    typedef std::function<void(MessageHandler, std::string)> SubscribeCallback;
+
     WebsocketBroadcaster(const WebsocketBroadcaster&) = delete;
 
-    WebsocketBroadcaster(boost::asio::io_service& io_service_, const char* logger_name = "default");
+    WebsocketBroadcaster(boost::asio::io_service& io_service_,
+                         SubscribeCallback subscribe_callback_,
+                         const char* logger_name = "default");
 
     void stop();
+
+    static void send_samples(MessageHandler hdl, const AudioSample* samples, size_t num);
 
   private:
     // TODO: create own configuration with own logger based on spdlog
@@ -48,4 +62,5 @@ class WebsocketBroadcaster {
     boost::asio::io_service::strand connections_strand;
     std::set<websocketpp::connection_hdl, std::owner_less<websocketpp::connection_hdl>> connections;
     WebsocketServer ws_server;
+    SubscribeCallback subscribe_callback;
 };
