@@ -637,7 +637,7 @@ void AudioSinksManager::InternalAudioSink::stream_read_callback(pa_stream* /*str
         sink->manager->logger->trace("(AudioSink '{}') There is a hole in a record stream!");
     }
 
-    if (sink->samples_callback) {
+    if (sink->samples_callback && sink->activated) {
         sink->samples_callback(static_cast<const AudioSample*>(data),
                                data_size / sizeof(AudioSample));
     }
