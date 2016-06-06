@@ -193,7 +193,10 @@ void ChromecastConnection::Implementation::handle_header_read(
     } else {
         uint32_t length = be32toh(message_header.be_length);
         logger->trace("(ChromecastConnection) We have header! size: {}", length);
-        logger->trace("{} < {} ?", read_buffer_size, length);
+        if (length > (1 << 20) /* 1MB */) {
+            report_error("Received too big message: " + std::to_string(length));
+            return;
+        }
         if (read_buffer_size < length) {
             read_buffer_size = static_cast<std::size_t>(length * 1.5);
             logger->trace("buffer size: {}", read_buffer_size);
