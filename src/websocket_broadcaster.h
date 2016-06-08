@@ -48,6 +48,10 @@ class WebsocketBroadcaster {
 
     static void send_samples(MessageHandler hdl, const AudioSample* samples, size_t num);
 
+    uint16_t get_port() const {
+        return port;
+    }
+
   private:
     // TODO: create own configuration with own logger based on spdlog
     typedef websocketpp::server<websocketpp::config::asio> WebsocketServer;
@@ -57,6 +61,7 @@ class WebsocketBroadcaster {
     void on_close(websocketpp::connection_hdl hdl);
     void on_socket_init(websocketpp::connection_hdl hdl, boost::asio::ip::tcp::socket& s);
 
+    uint16_t port;
     std::shared_ptr<spdlog::logger> logger;
     boost::asio::io_service& io_service;
     boost::asio::io_service::strand connections_strand;

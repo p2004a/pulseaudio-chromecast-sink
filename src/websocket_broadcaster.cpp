@@ -58,7 +58,8 @@ WebsocketBroadcaster::WebsocketBroadcaster(boost::asio::io_service& io_service_,
     if (error) {
         logger->error("(WebsocketBroadcaster) Couldn't get listening socket: {}", error);
     } else {
-        logger->info("(WebsocketBroadcaster) Connecting on port {}", local_endpoint.port());
+        port = local_endpoint.port();
+        logger->info("(WebsocketBroadcaster) Connecting on port {}", port);
     }
 }
 
@@ -123,6 +124,7 @@ void WebsocketBroadcaster::send_samples(MessageHandler hdl, const AudioSample* s
                                         size_t num) {
     if (hdl.this_ptr == nullptr) return;
     std::error_code error;
+    // TODO: add checking of buffered amount and ignore send if there is too much
     hdl.this_ptr->ws_server.send(hdl.hdl, samples, num * sizeof(AudioSample),
                                  websocketpp::frame::opcode::binary, error);
     if (error && error != websocketpp::error::value::bad_connection) {
