@@ -18,6 +18,7 @@
 #pragma once
 
 #include <functional>
+#include <memory>
 #include <string>
 #include <tuple>
 
@@ -53,3 +54,39 @@ std::string generate_random_string(
         std::string characters = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
 
 std::string replace_all(const std::string& str, const std::string& what, const std::string& to);
+
+/*
+ * Simple wrapper that wraps any callback handler with std::weak_ptr to make sure that callback
+ * target object exists.
+ */
+template <class F, class T>
+class weak_ptr_wrapper {
+  public:
+    weak_ptr_wrapper(F&& f_, std::weak_ptr<T> ptr_) : f(std::forward<F>(f_)), weak_ptr(ptr_) {}
+
+    template <class... Arg>
+    void operator()(Arg... arg) {
+        if (auto ptr = weak_ptr.lock()) {
+            f(arg...);
+        }
+    }
+
+  private:
+    F f;
+    std::weak_ptr<T> weak_ptr;
+};
+
+template <class F, class T>
+weak_ptr_wrapper<F, T> wrap_weak_ptr(F&& f, std::weak_ptr<T> ptr) {
+    return weak_ptr_wrapper<F, T>(std::forward<F>(f), ptr);
+};
+
+template <class F, class T>
+weak_ptr_wrapper<F, T> wrap_weak_ptr(F&& f, std::shared_ptr<T> ptr) {
+    return wrap_weak_ptr<F, T>(std::forward<F>(f), std::weak_ptr<T>{ptr});
+};
+
+template <class F, class T>
+weak_ptr_wrapper<F, T> wrap_weak_ptr(F&& f, T* ptr) {
+    return wrap_weak_ptr<F, T>(std::forward<F>(f), ptr->shared_from_this());
+};

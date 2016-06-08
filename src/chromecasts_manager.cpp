@@ -98,20 +98,13 @@ Chromecast::Chromecast(ChromecastsManager& manager_, ChromecastFinder::Chromecas
 void Chromecast::init() {
     sink = manager.sinks_manager.create_new_sink(info.name);
 
-    sink->set_activation_callback(strand.wrap([weak_ptr = my_weak_from_this()](bool a) {
-        if (auto ptr = weak_ptr.lock()) {
-            ptr->activation_callback(a);
-        }
-    }));
+    sink->set_activation_callback(weak_wrap([this](bool a) { activation_callback(a); }));
 
     sink->set_volume_callback(
-            strand.wrap([weak_ptr = my_weak_from_this()](double l, double r, bool m) {
-                if (auto ptr = weak_ptr.lock()) {
-                    ptr->volume_callback(l, r, m);
-                }
-            }));
+            weak_wrap([this](double l, double r, bool m) { volume_callback(l, r, m); }));
 
-    sink->set_samples_callback([weak_ptr = my_weak_from_this()](const AudioSample* s, size_t n) {
+    sink->set_samples_callback([weak_ptr = std::weak_ptr<Chromecast>{shared_from_this()}](
+            const AudioSample* s, size_t n) {
         if (auto ptr = weak_ptr.lock()) {
             std::lock_guard<std::mutex> guard(ptr->message_handler_mu);
             WebsocketBroadcaster::send_samples(ptr->message_handler, s, n);
@@ -150,21 +143,11 @@ void Chromecast::activation_callback(bool activate) {
         manager.logger->info("(Chromecast '{}') Activated!", info.name);
         connection = std::make_shared<ChromecastConnection>(
                 manager.io_service, *info.endpoints.begin(),
-                strand.wrap([weak_ptr = my_weak_from_this()](std::string message) {
-                    if (auto ptr = weak_ptr.lock()) {
-                        ptr->connection_error_handler(message);
-                    }
+                weak_wrap([this](std::string message) { connection_error_handler(message); }),
+                weak_wrap([this](cast_channel::CastMessage message) {
+                    connection_message_handler(message);
                 }),
-                strand.wrap([weak_ptr = my_weak_from_this()](cast_channel::CastMessage message) {
-                    if (auto ptr = weak_ptr.lock()) {
-                        ptr->connection_message_handler(message);
-                    }
-                }),
-                strand.wrap([weak_ptr = my_weak_from_this()](bool connected) {
-                    if (auto ptr = weak_ptr.lock()) {
-                        ptr->connection_connected_handler(connected);
-                    }
-                }));
+                weak_wrap([this](bool connected) { connection_connected_handler(connected); }));
     } else {
         manager.logger->info("(Chromecast '{}') Deactivated!", info.name);
         connection.reset();

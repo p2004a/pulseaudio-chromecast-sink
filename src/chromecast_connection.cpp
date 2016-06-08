@@ -139,7 +139,7 @@ void ChromecastConnection::Implementation::send_message(const cast_channel::Cast
     message.SerializeToArray(data.get() + sizeof(uint32_t), message.ByteSize());
 
     write_strand.dispatch(
-            [ this, data{std::move(data)}, buffer_size, this_ptr = shared_from_this() ] {
+            [ this, data = std::move(data), buffer_size, this_ptr = shared_from_this() ] {
                 write_queue.emplace_back(std::move(data), buffer_size);
                 if (write_queue.size() == 1) {
                     write_from_queue();

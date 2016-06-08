@@ -54,9 +54,9 @@ class Chromecast : public std::enable_shared_from_this<Chromecast> {
   private:
     void init();
 
-    // Waiting for C++17
-    std::weak_ptr<Chromecast> my_weak_from_this() {
-        return std::weak_ptr<Chromecast>{shared_from_this()};
+    template <class F>
+    auto weak_wrap(F&& f) {
+        return strand.wrap(wrap_weak_ptr(std::forward<F>(f), this));
     }
 
     void volume_callback(double left, double right, bool muted);
