@@ -99,18 +99,15 @@ Chromecast::Chromecast(ChromecastsManager& manager_, ChromecastFinder::Chromecas
 void Chromecast::init() {
     sink = manager.sinks_manager.create_new_sink(info.name);
 
-    sink->set_activation_callback(weak_wrap([this](bool a) { activation_callback(a); }));
+    sink->set_activation_callback(mem_weak_wrap(&Chromecast::activation_callback));
+    sink->set_volume_callback(mem_weak_wrap(&Chromecast::volume_callback));
 
-    sink->set_volume_callback(
-            weak_wrap([this](double l, double r, bool m) { volume_callback(l, r, m); }));
-
-    sink->set_samples_callback([weak_ptr = std::weak_ptr<Chromecast>{shared_from_this()}](
-            const AudioSample* s, size_t n) {
-        if (auto ptr = weak_ptr.lock()) {
-            std::lock_guard<std::mutex> guard(ptr->message_handler_mu);
-            WebsocketBroadcaster::send_samples(ptr->message_handler, s, n);
-        }
-    });
+    sink->set_samples_callback(wrap_weak_ptr(
+            [this](const AudioSample* s, size_t n) {
+                std::lock_guard<std::mutex> guard(message_handler_mu);
+                WebsocketBroadcaster::send_samples(message_handler, s, n);
+            },
+            this));
 }
 
 std::shared_ptr<Chromecast> Chromecast::create(ChromecastsManager& manager_,
@@ -121,7 +118,7 @@ std::shared_ptr<Chromecast> Chromecast::create(ChromecastsManager& manager_,
 }
 
 void Chromecast::update_info(ChromecastFinder::ChromecastInfo info_) {
-    strand.dispatch([ =, this_ptr = shared_from_this() ] { info = info_; });
+    strand.dispatch(weak_wrap([=] { info = info_; }));
 }
 
 void Chromecast::set_message_handler(WebsocketBroadcaster::MessageHandler handler) {
@@ -144,11 +141,9 @@ void Chromecast::activation_callback(bool activate) {
         manager.logger->info("(Chromecast '{}') Activated!", info.name);
         connection = std::make_shared<ChromecastConnection>(
                 manager.io_service, *info.endpoints.begin(),
-                weak_wrap([this](std::string message) { connection_error_handler(message); }),
-                weak_wrap([this](cast_channel::CastMessage message) {
-                    connection_message_handler(message);
-                }),
-                weak_wrap([this](bool connected) { connection_connected_handler(connected); }));
+                mem_weak_wrap(&Chromecast::connection_error_handler),
+                mem_weak_wrap(&Chromecast::connection_message_handler),
+                mem_weak_wrap(&Chromecast::connection_connected_handler));
     } else {
         manager.logger->info("(Chromecast '{}') Deactivated!", info.name);
         connection.reset();
@@ -170,18 +165,13 @@ void Chromecast::connection_connected_handler(bool connected) {
         manager.logger->info("(Chromecast '{}') I'm connected!", info.name);
         main_channel =
                 MainChromecastChannel::create(manager.io_service, "sender-0", "receiver-0",
-                                              weak_wrap([this](cast_channel::CastMessage msg) {
-                                                  if (connection) {
-                                                      connection->send_message(msg);
-                                                  }
-                                              }),
+                                              mem_weak_wrap(&Chromecast::connection_message_sender),
                                               manager.logger->name().c_str());
 
         main_channel->start();
 
         // TODO: move appId to config
-        main_channel->load_app("10600AB8",
-                               weak_wrap([this](nlohmann::json msg) { handle_app_load(msg); }));
+        main_channel->load_app("10600AB8", mem_weak_wrap(&Chromecast::handle_app_load));
     } else {
         manager.logger->info("(Chromecast '{}') I'm not connected!", info.name);
         // TODO: add support for graceful app unloading
@@ -201,11 +191,7 @@ void Chromecast::handle_app_load(nlohmann::json msg) try {
 
         app_channel =
                 AppChromecastChannel::create(manager.io_service, "app-controller-0", transport_id,
-                                             weak_wrap([this](cast_channel::CastMessage msg) {
-                                                 if (connection) {
-                                                     connection->send_message(msg);
-                                                 }
-                                             }),
+                                             mem_weak_wrap(&Chromecast::connection_message_sender),
                                              manager.logger->name().c_str());
 
         app_channel->start();
@@ -216,22 +202,29 @@ void Chromecast::handle_app_load(nlohmann::json msg) try {
             endpoints.emplace_back(addr, manager.broadcaster.get_port());
         }
 
-        app_channel->start_stream(
-                endpoints.begin(), endpoints.end(), info.name,
-                weak_wrap([this](AppChromecastChannel::Result result) {
-                    if (result.ok) {
-                        manager.logger->info("(Chromecast) Receiver started streaming!");
-                    } else {
-                        manager.logger->error("Chromecast Receiver failed to start streaming: {}",
-                                              result.message);
-                    }
-                }));
+        app_channel->start_stream(endpoints.begin(), endpoints.end(), info.name,
+                                  mem_weak_wrap(&Chromecast::handle_stream_start));
     }
 } catch (std::domain_error) {
-    manager.logger->error("(Chromecast) JSON load app didn't have expected fields");
+    manager.logger->error("(Chromecast '{}') JSON load app didn't have expected fields", info.name);
 }
 
-void Chromecast::connection_message_handler(const cast_channel::CastMessage& message) {
+void Chromecast::handle_stream_start(AppChromecastChannel::Result result) {
+    if (result.ok) {
+        manager.logger->info("(Chromecast '{}') Receiver started streaming!", info.name);
+    } else {
+        manager.logger->error("(Chromecast '{}')_ Receiver failed to start streaming: {}",
+                              info.name, result.message);
+    }
+}
+
+void Chromecast::connection_message_sender(cast_channel::CastMessage message) {
+    if (connection) {
+        connection->send_message(message);
+    }
+}
+
+void Chromecast::connection_message_handler(cast_channel::CastMessage message) {
     if (main_channel &&
         (message.destination_id() == "sender-0" || message.destination_id() == "*")) {
         main_channel->dispatch_message(message);

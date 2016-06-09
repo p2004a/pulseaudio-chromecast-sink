@@ -60,12 +60,19 @@ class Chromecast : public std::enable_shared_from_this<Chromecast> {
         return strand.wrap(wrap_weak_ptr(std::forward<F>(f), this));
     }
 
+    template <class... Args>
+    auto mem_weak_wrap(void (Chromecast::*mem)(Args...)) {
+        return weak_wrap([this, mem](Args... args) { (this->*mem)(args...); });
+    }
+
     void volume_callback(double left, double right, bool muted);
     void activation_callback(bool activate);
     void connection_error_handler(std::string message);
     void connection_connected_handler(bool connected);
-    void connection_message_handler(const cast_channel::CastMessage& message);
+    void connection_message_sender(cast_channel::CastMessage message);
+    void connection_message_handler(cast_channel::CastMessage message);
     void handle_app_load(nlohmann::json);
+    void handle_stream_start(AppChromecastChannel::Result result);
 
     ChromecastsManager& manager;
     std::shared_ptr<AudioSink> sink;
