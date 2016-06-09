@@ -488,7 +488,7 @@ void AudioSinksManager::InternalAudioSink::module_load_callback(pa_context* /*c*
     pa_sample_spec sample_spec;
     sample_spec.format = PA_SAMPLE_S16LE;
     sample_spec.channels = 2;
-    sample_spec.rate = 44100;
+    sample_spec.rate = 48000;
     std::string stream_name = sink->identifier + "_record_stream";
     sink->stream = pa_stream_new(sink->manager->context, stream_name.c_str(), &sample_spec, NULL);
     if (!sink->stream) {
@@ -503,6 +503,7 @@ void AudioSinksManager::InternalAudioSink::module_load_callback(pa_context* /*c*
 
     std::string device_name = sink->identifier + ".monitor";
     pa_buffer_attr buffer_attr;
+    // TODO: make buffer size configurable
     buffer_attr.fragsize =
             (sample_spec.rate * sizeof(AudioSample)) / (1000 / 20);  // 20ms of buffer
     buffer_attr.maxlength = static_cast<uint32_t>(-1);

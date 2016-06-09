@@ -24,6 +24,7 @@
 #include <boost/asio/strand.hpp>
 
 #include "audio_sinks_manager.h"
+#include "chromecast_channel.h"
 #include "chromecast_connection.h"
 #include "chromecast_finder.h"
 #include "websocket_broadcaster.h"
@@ -64,6 +65,7 @@ class Chromecast : public std::enable_shared_from_this<Chromecast> {
     void connection_error_handler(std::string message);
     void connection_connected_handler(bool connected);
     void connection_message_handler(const cast_channel::CastMessage& message);
+    void handle_app_load(nlohmann::json);
 
     ChromecastsManager& manager;
     std::shared_ptr<AudioSink> sink;
@@ -73,6 +75,9 @@ class Chromecast : public std::enable_shared_from_this<Chromecast> {
     std::mutex message_handler_mu;
     WebsocketBroadcaster::MessageHandler message_handler;
     bool activated;
+    std::shared_ptr<MainChromecastChannel> main_channel;
+    std::shared_ptr<AppChromecastChannel> app_channel;
+    std::string transport_id, session_id;
 };
 
 class ChromecastsManager {

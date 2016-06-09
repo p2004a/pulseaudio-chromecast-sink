@@ -17,44 +17,69 @@
 
 'use strict';
 
-const SOUND_FRAGMENT_SIZE = 1024;  // samples
-const SAMPLE_RATE = 44100;  // samples / second
+const SOUND_FRAGMENT_SIZE = 4096;  // samples
+const SAMPLE_RATE = 48000;  // samples / second
 const BUFFERING_TIME = 2.0;  // seconds
 
 class SoundReceiver {
 // public:
-    constructor(name, address, soundCallback, closedCallback = null) {
-        this.ws = new WebSocket(address);
-        this.ws.binaryType = 'arraybuffer';
-        this.ws.onclose = () => this._onClose();
-        this.ws.onmessage = msg => this._onMessage(msg);
-        this.ws.onopen = () => this._onOpen();
+    constructor(name, address, soundCb, stateCb) {
+        try {
+            this.name = name;
+            this.soundCallback = soundCb;
+            this.stateCallback = stateCb;
 
-        this.name = name;
-        this.closedCallback = closedCallback;
-        this.soundCallback = soundCallback;
+            this.state = SoundReceiver.State.connecting;
+
+            this.ws = new WebSocket(address);
+            this.ws.binaryType = 'arraybuffer';
+            this.ws.onclose = () => this._onClose();
+            this.ws.onmessage = msg => this._onMessage(msg);
+            this.ws.onopen = () => this._onOpen();
+            this.ws.onerror = error => this._onError(error);
+        } catch (e) {
+            _onError(e);
+            _onClose();
+        }
+    }
+
+    close() {
+        this.ws.close();
+    }
+
+    getState() {
+        return this.state;
     }
 
 // private:
+    _onError(error) {
+        if (this.state === SoundReceiver.State.connecting) {
+            this.state = SoundReceiver.State.connecting_failed;
+        } else {
+            this.state = SoundReceiver.State.error;
+        }
+        this.stateCallback(this.state);
+    }
+
     _onOpen() {
         this.ws.send(JSON.stringify({
             type: 'SUBSCRIBE',
             name: this.name
         }));
+        this.state = SoundReceiver.State.connected;
+        this.stateCallback(this.state);
     }
 
     _onClose() {
-        if (this.closedCallback !== null) {
-            this.closedCallback();
-        } else {
-            console.warn('Unexpected WebSocket close');
-        }
+        this.state = SoundReceiver.State.closed;
+        this.stateCallback(this.state);
     }
 
     _onMessage(message) {
         if (!(message.data instanceof ArrayBuffer)) {
             console.warn('Expected ArrayBuffer as message, got ' +
                          message.data.constructor.name);
+            return;
         }
         const leftChan = new Float32Array(message.data.byteLength / 4);
         const rightChan = new Float32Array(message.data.byteLength / 4);
@@ -63,8 +88,17 @@ class SoundReceiver {
             leftChan[j] = dataView.getInt16(i, true) / 32768.0;
             rightChan[j] = dataView.getInt16(i + 2, true) / 32768.0;
         }
+
         this.soundCallback({left: leftChan, right: rightChan});
     }
+}
+
+SoundReceiver.State = {
+    connecting: 'connecting',
+    connecting_failed: 'connecting_failed',
+    connected: 'connected',
+    closed: 'closed',
+    error: 'error'
 }
 
 class SoundPlayer {
@@ -73,7 +107,7 @@ class SoundPlayer {
         this.context = new AudioContext();
         if (this.context.sampleRate != SAMPLE_RATE) {
             // TODO: add resampling here or on the backend
-            throw new Error('incompatibile sample rate!');
+            console.error('incompatibile sample rate!');
         }
 
         this.processor = this.context.createScriptProcessor(
@@ -95,8 +129,6 @@ class SoundPlayer {
     }
 
     pushSamples(samples) {
-        // TODO: add ignoring old samples
-
         let numSamples = samples.left.length;
         let partial = this.partialSamples;
         let offset = this.partialSamplesOffset;
@@ -132,6 +164,11 @@ class SoundPlayer {
             return this.nullSample;
         }
 
+        // Quite brutal but should work fine
+        while (this._getTimeInBuffer() >= 1.5 * BUFFERING_TIME) {
+            this.samplesBuffer.shift();
+        }
+
         if (this.samplesBuffer.length > 0) {
             return this.samplesBuffer.shift();
         }
@@ -165,26 +202,15 @@ class SoundPlayer {
     }
 };
 
-window.onload = function () {
+function initHTMLControls() {
     const websocketAddrInput = document.getElementById('websocket-addr');
     const deviceNameInput = document.getElementById('device-name');
     const connectBtn = document.getElementById('btn-connect');
 
-    let soundReceiver = null;
-    const soundPlayer = new SoundPlayer();
-
     function enteredWebsocketAddr() {
-        if (soundReceiver === null) {
-            const addr = websocketAddrInput.value;
-            const device = deviceNameInput.value;
-
-            console.log('connecting to ' + addr + ' as ' + device);
-            soundReceiver = new SoundReceiver(
-                device, addr, samples => soundPlayer.pushSamples(samples),
-                () => {
-                    soundReceiver = null;
-                });
-        }
+        const addr = websocketAddrInput.value;
+        const device = deviceNameInput.value;
+        simpleStartStreaming(device, addr);
     }
 
     connectBtn.addEventListener('click', enteredWebsocketAddr);
@@ -193,4 +219,133 @@ window.onload = function () {
             enteredWebsocketAddr();
         }
     });
+}
+
+function initChromecastReceiver() {
+    const appConfig = new cast.receiver.CastReceiverManager.Config();
+    appConfig.statusText = 'Websocket Streamer';
+    appConfig.maxInactivity = 60;
+
+    const castReceiverManager = cast.receiver.CastReceiverManager.getInstance();
+    castReceiverManager.onSenderDisconnected = event => {
+        if (castReceiverManager.getSenders().length == 0 && event.reason ==
+                cast.receiver.system.DisconnectReason.REQUESTED_BY_SENDER) {
+            window.close();
+        }
+    }
+
+    const websocketAppChannel = castReceiverManager.getCastMessageBus(
+        'urn:x-cast:com.p2004a.chromecast-receiver.wsapp',
+        cast.receiver.CastMessageBus.MessageType.JSON);
+
+    const message_handlers = {
+        'START_STREAM': (message, done) => {
+            if (soundReceiver) {
+                done('Already streaming', null);
+                return;
+            }
+            if (!(message.addresses instanceof Array)) {
+                done('"addresses" atribute is not an Array', null);
+                return;
+            }
+            if (typeof message.deviceName !== 'string') {
+                done('"deviceName" atribute is not a string', null);
+                return;
+            }
+
+            function startStreamRecursive(addrList) {
+                if (addrList.length == 0) {
+                    done('Connection to every provided endpoint failed');
+                    return;
+                }
+
+                const addr = addrList.shift();
+
+                function handleStateUpdate(state) {
+                    if (state == SoundReceiver.State.closed) {
+                        window.soundReceiver = null;
+                    } else if (state == SoundReceiver.State.connecting_failed) {
+                        startStreamRecursive(addrList);
+                    } else if (state == SoundReceiver.State.connected) {
+                        done(null, null);
+                    }
+                }
+
+                window.soundReceiver = new SoundReceiver(
+                    message.deviceName, addr,
+                    samples => window.soundPlayer.pushSamples(samples),
+                    handleStateUpdate);
+            }
+
+            startStreamRecursive(message.addresses);
+        },
+        'STOP_STREAM': (message, done) => {
+            if (!soundReceiver) {
+                done('Not streaming', null);
+                return;
+            }
+
+            soundReceiver.close();
+            soundReceiver = null;
+            done(null, null);
+        },
+        'GET_STATE': (message, done) => {
+            if (soundReceiver) {
+                done(null, {state: "STREAMING"});
+            } else {
+                done(null, {state: "NOT_STREAMING"});
+            }
+        }
+    };
+
+    websocketAppChannel.onMessage = event => {
+        let message = event.data;
+
+        function done(errorMessage, data) {
+            if (errorMessage) {
+                websocketAppChannel.send(event.senderId, {
+                    'type': 'ERROR',
+                    'requestId': message.requestId,
+                    'message': errorMessage
+                });
+            } else {
+                websocketAppChannel.send(event.senderId, {
+                    'type': 'OK',
+                    'requestId': message.requestId,
+                    'data': data
+                });
+            }
+        }
+
+        if (message_handlers[message.type]) {
+            message_handlers[message.type](message, done);
+        } else {
+            done(`Unexpected message type '${message.type}'`, null);
+        }
+    }
+
+    castReceiverManager.start(appConfig);
+}
+
+window.onload = function () {
+    // Let's make it global for debugging purposes
+    window.soundReceiver = null;
+    window.soundPlayer = new SoundPlayer();
+
+    window.simpleStartStreaming = function(device, addr) {
+        if (window.soundReceiver !== null) {
+            window.soundReceiver.close()
+        }
+        console.info('connecting to ' + addr + ' as ' + device);
+        window.soundReceiver = new SoundReceiver(
+            device, addr, samples => window.soundPlayer.pushSamples(samples),
+            state => {
+                if (state == SoundReceiver.State.closed) {
+                    window.soundReceiver = null;
+                }
+            });
+    }
+
+    initHTMLControls();
+    initChromecastReceiver();
 }

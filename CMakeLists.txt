@@ -54,7 +54,9 @@ set(SOURCE_FILES src/main.cpp
                  src/audio_sinks_manager.cpp
                  src/chromecast_connection.cpp
                  src/chromecasts_manager.cpp
-                 src/websocket_broadcaster.cpp)
+                 src/websocket_broadcaster.cpp
+                 src/chromecast_channel.cpp
+                 src/network_address.cpp)
 
 add_executable(prog ${SOURCE_FILES})
 target_link_libraries(prog pthread

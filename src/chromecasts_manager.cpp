@@ -18,6 +18,7 @@
 #include <functional>
 
 #include "chromecasts_manager.h"
+#include "network_address.h"
 
 ChromecastsManager::ChromecastsManager(boost::asio::io_service& io_service_,
                                        const char* logger_name)
@@ -151,42 +152,92 @@ void Chromecast::activation_callback(bool activate) {
     } else {
         manager.logger->info("(Chromecast '{}') Deactivated!", info.name);
         connection.reset();
+        main_channel.reset();
+        app_channel.reset();
     }
 }
 
 void Chromecast::connection_error_handler(std::string message) {
     manager.logger->error("(Chromecast '{}') connection error: {}", info.name, message);
     connection.reset();
+    main_channel.reset();
+    app_channel.reset();
     // TODO: try to reconnect after some time
 }
 
 void Chromecast::connection_connected_handler(bool connected) {
     if (connected) {
         manager.logger->info("(Chromecast '{}') I'm connected!", info.name);
+        main_channel =
+                MainChromecastChannel::create(manager.io_service, "sender-0", "receiver-0",
+                                              weak_wrap([this](cast_channel::CastMessage msg) {
+                                                  if (connection) {
+                                                      connection->send_message(msg);
+                                                  }
+                                              }),
+                                              manager.logger->name().c_str());
 
-        cast_channel::CastMessage message;
-        message.set_protocol_version(cast_channel::CastMessage_ProtocolVersion_CASTV2_1_0);
-        message.set_source_id("sender-0");
-        message.set_destination_id("receiver-0");
+        main_channel->start();
 
-        message.set_namespace_("urn:x-cast:com.google.cast.tp.connection");
-        message.set_payload_type(cast_channel::CastMessage_PayloadType_STRING);
-        message.set_payload_utf8("{\"type\":\"CONNECT\"}");
-        connection->send_message(message);
-
-        message.set_namespace_("urn:x-cast:com.google.cast.tp.heartbeat");
-        message.set_payload_type(cast_channel::CastMessage_PayloadType_STRING);
-        message.set_payload_utf8("{\"type\":\"PING\"}");
-        connection->send_message(message);
+        // TODO: move appId to config
+        main_channel->load_app("10600AB8",
+                               weak_wrap([this](nlohmann::json msg) { handle_app_load(msg); }));
     } else {
         manager.logger->info("(Chromecast '{}') I'm not connected!", info.name);
+        // TODO: add support for graceful app unloading
         connection.reset();
+        main_channel.reset();
+        app_channel.reset();
         // TODO: try to reconnect
     }
-    // TODO: start protcol
+}
+
+void Chromecast::handle_app_load(nlohmann::json msg) try {
+    if (msg["type"] == "LAUNCH_ERROR") {
+        manager.logger->error("Failed to launch app");
+    } else if (msg["type"] == "RECEIVER_STATUS") {
+        transport_id = msg["status"]["applications"][0]["transportId"];
+        session_id = msg["status"]["applications"][0]["sessionId"];
+
+        app_channel =
+                AppChromecastChannel::create(manager.io_service, "app-controller-0", transport_id,
+                                             weak_wrap([this](cast_channel::CastMessage msg) {
+                                                 if (connection) {
+                                                     connection->send_message(msg);
+                                                 }
+                                             }),
+                                             manager.logger->name().c_str());
+
+        app_channel->start();
+
+        auto addresses = get_local_addresses();
+        std::vector<boost::asio::ip::tcp::endpoint> endpoints;
+        for (auto addr : addresses) {
+            endpoints.emplace_back(addr, manager.broadcaster.get_port());
+        }
+
+        app_channel->start_stream(
+                endpoints.begin(), endpoints.end(), info.name,
+                weak_wrap([this](AppChromecastChannel::Result result) {
+                    if (result.ok) {
+                        manager.logger->info("(Chromecast) Receiver started streaming!");
+                    } else {
+                        manager.logger->error("Chromecast Receiver failed to start streaming: {}",
+                                              result.message);
+                    }
+                }));
+    }
+} catch (std::domain_error) {
+    manager.logger->error("(Chromecast) JSON load app didn't have expected fields");
 }
 
 void Chromecast::connection_message_handler(const cast_channel::CastMessage& message) {
-    manager.logger->trace("(Chromecast '{}') Got message: {}", info.name, message.DebugString());
-    // TODO: dispatch message
+    if (main_channel &&
+        (message.destination_id() == "sender-0" || message.destination_id() == "*")) {
+        main_channel->dispatch_message(message);
+    }
+    if (app_channel &&
+        (message.destination_id() == "app-controller-0" || message.destination_id() == "*")) {
+        app_channel->dispatch_message(message);
+    }
 }
