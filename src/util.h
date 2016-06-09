@@ -82,11 +82,6 @@ weak_ptr_wrapper<F, T> wrap_weak_ptr(F&& f, std::weak_ptr<T> ptr) {
 };
 
 template <class F, class T>
-weak_ptr_wrapper<F, T> wrap_weak_ptr(F&& f, std::shared_ptr<T> ptr) {
-    return wrap_weak_ptr<F, T>(std::forward<F>(f), std::weak_ptr<T>{ptr});
-};
-
-template <class F, class T>
 weak_ptr_wrapper<F, T> wrap_weak_ptr(F&& f, T* ptr) {
     return wrap_weak_ptr<F, T>(std::forward<F>(f), ptr->shared_from_this());
 };
