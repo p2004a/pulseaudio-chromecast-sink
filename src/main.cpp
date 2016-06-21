@@ -32,7 +32,7 @@
 int main() {
     auto default_logger = spdlog::stdout_logger_mt("default", true /*use color*/);
 
-    default_logger->set_level(spdlog::level::trace);
+    default_logger->set_level(spdlog::level::debug);
 
     boost::asio::io_service io_service;
 
