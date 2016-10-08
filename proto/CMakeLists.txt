@@ -14,8 +14,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-include(FindProtobuf)
-find_package(Protobuf REQUIRED)
-include_directories(${PROTOBUF_INCLUDE_DIR})
 protobuf_generate_cpp(PROTO_SRC PROTO_HEADER cast_channel.proto)
 add_library(cast_channel ${PROTO_SRC})
+target_compile_options(cast_channel PRIVATE -w)

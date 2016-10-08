@@ -18,13 +18,14 @@ cmake_minimum_required(VERSION 3.0)
 
 project(pachromecastsink)
 
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -Wall -Wextra -march=native")
-set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g -O1 -D_GLIBCXX_DEBUG")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -std=c++14 -Wall -Wextra")
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -g3 -O1 -D_GLIBCXX_DEBUG")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O2")
 
 set(CMAKE_CXX_STANDARD_REQUIRED on)
 set(CMAKE_CXX_STANDARD 14)
 
+find_package(Protobuf REQUIRED)
 find_package(Boost 1.58 REQUIRED COMPONENTS thread system iostreams)
 find_package(OpenSSL REQUIRED)
 find_package(spdlog REQUIRED)
@@ -36,6 +37,7 @@ pkg_search_module(libpulse REQUIRED libpulse)
 add_subdirectory(proto)
 
 include_directories(${Boost_INCLUDE_DIRS}
+                    ${PROTOBUF_INCLUDE_DIR}
                     ${avahi-client_INCLUDE_DIRS}
                     ${libpulse_INCLUDE_DIRS}
                     ${spdlog_INCLUDE_DIRS}
