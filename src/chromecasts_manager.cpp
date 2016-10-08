@@ -128,8 +128,8 @@ void Chromecast::set_message_handler(WebsocketBroadcaster::MessageHandler handle
 
 void Chromecast::volume_callback(double left, double right, bool muted) {
     if (left != right) {
-        manager.logger->notice("(Chromecast '{}') left volume {} != right volume {}", info.name,
-                               left, right);
+        manager.logger->info("(Chromecast '{}') left volume {} != right volume {}", info.name, left,
+                             right);
     }
     manager.logger->info("(Chromecast '{}') [{}] volume {}", info.name, muted ? "M" : " ", left);
     // TODO: send volume update to chromecast

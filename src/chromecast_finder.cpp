@@ -121,7 +121,7 @@ void ChromecastFinder::client_callback(AvahiClient* c, AvahiClientState state, v
 
         case AVAHI_CLIENT_FAILURE:
             if (avahi_client_errno(cf->avahi_client) == AVAHI_ERR_DISCONNECTED) {
-                cf->logger->notice("(ChromecastFinder) Avahi server disconnected");
+                cf->logger->info("(ChromecastFinder) Avahi server disconnected");
                 cf->stop();
                 cf->start_discovery();
             } else {

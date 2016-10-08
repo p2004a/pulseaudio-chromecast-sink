@@ -65,7 +65,7 @@ std::shared_ptr<ChromecastConnection::Implementation> ChromecastConnection::Impl
 
 void ChromecastConnection::Implementation::connect(boost::asio::ip::tcp::endpoint endpoint_) {
     endpoint = endpoint_;
-    logger->trace("(ChromecastConnection) Connecting to {}", endpoint.address());
+    logger->trace("(ChromecastConnection) Connecting to {}", endpoint.address().to_string());
 
     socket.lowest_layer().async_connect(endpoint, [
         this, this_ptr = shared_from_this()

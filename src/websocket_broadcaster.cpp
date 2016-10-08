@@ -56,7 +56,7 @@ WebsocketBroadcaster::WebsocketBroadcaster(boost::asio::io_service& io_service_,
     boost::system::error_code error;
     auto local_endpoint = ws_server.get_local_endpoint(error);
     if (error) {
-        logger->error("(WebsocketBroadcaster) Couldn't get listening socket: {}", error);
+        logger->error("(WebsocketBroadcaster) Couldn't get listening socket: {}", error.message());
     } else {
         port = local_endpoint.port();
         logger->info("(WebsocketBroadcaster) Connecting on port {}", port);
@@ -97,7 +97,7 @@ void WebsocketBroadcaster::stop() {
                 logger->trace("(WebsocketBroadcaster) stopping connection");
                 ws_server.close(hdl, websocketpp::close::status::normal, "");
             } catch (websocketpp::lib::error_code ec) {
-                logger->error("(WebsocketBroadcaster) closing connection failed: {}", ec);
+                logger->error("(WebsocketBroadcaster) closing connection failed: {}", ec.message());
             }
         }
     });
@@ -128,6 +128,7 @@ void WebsocketBroadcaster::send_samples(MessageHandler hdl, const AudioSample* s
     hdl.this_ptr->ws_server.send(hdl.hdl, samples, num * sizeof(AudioSample),
                                  websocketpp::frame::opcode::binary, error);
     if (error && error != websocketpp::error::value::bad_connection) {
-        hdl.this_ptr->logger->error("(WebsocketBroadcaster) Couldn't send data: {}", error);
+        hdl.this_ptr->logger->error("(WebsocketBroadcaster) Couldn't send data: {}",
+                                    error.message());
     }
 }
