@@ -111,11 +111,10 @@ void ChromecastConnection::Implementation::handshake_handler(
 bool ChromecastConnection::Implementation::is_connection_end(
         const boost::system::error_code& error) {
     if (error == boost::asio::error::eof) {
-        logger->warn("ChromecastConnection) Got error::eof, that was unexpected");
+        logger->warn("(ChromecastConnection) Got error::eof, that was unexpected");
     }
-    return (error.category() == boost::asio::error::get_ssl_category() &&
-            error.value() == ERR_PACK(ERR_LIB_SSL, 0, SSL_R_SHORT_READ)) ||
-           error == boost::asio::error::eof;
+
+    return error == boost::asio::ssl::error::stream_truncated || error == boost::asio::error::eof;
 }
 
 void ChromecastConnection::Implementation::read_op_handler_error(
