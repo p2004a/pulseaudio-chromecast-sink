@@ -15,23 +15,22 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
-#include <boost/asio/ip/tcp.hpp>
+#include <asio/ip/tcp.hpp>
 #include <sstream>
 
 #include "chromecast_channel.h"
 
 template <class T>
-BaseChromecastChannel<T>::BaseChromecastChannel(boost::asio::io_service& io_service,
-                                                std::string name_, std::string destination_,
-                                                MessageFunc send_func_, const char* logger_name,
-                                                private_tag)
+BaseChromecastChannel<T>::BaseChromecastChannel(asio::io_service& io_service, std::string name_,
+                                                std::string destination_, MessageFunc send_func_,
+                                                const char* logger_name, private_tag)
         : strand(io_service), name(name_), destination(destination_), send_func(send_func_) {
     logger = spdlog::get(logger_name);
 }
 
 template <class T>
-std::shared_ptr<T> BaseChromecastChannel<T>::create(boost::asio::io_service& io_service,
-                                                    std::string name_, std::string destination_,
+std::shared_ptr<T> BaseChromecastChannel<T>::create(asio::io_service& io_service, std::string name_,
+                                                    std::string destination_,
                                                     MessageFunc send_func_,
                                                     const char* logger_name) {
     return std::make_shared<T>(io_service, name_, destination_, send_func_, logger_name,
@@ -88,7 +87,7 @@ void BaseChromecastChannel<T>::send_message(std::string ns, nlohmann::json msg) 
 
 template <class T>
 BasicChromecastChannel<T>::BasicChromecastChannel(
-        boost::asio::io_service& io_service, std::string name_, std::string destination_,
+        asio::io_service& io_service, std::string name_, std::string destination_,
         typename BaseChromecastChannel<T>::MessageFunc send_func_, const char* logger_name,
         typename BaseChromecastChannel<T>::private_tag tag)
         : BaseChromecastChannel<T>(io_service, name_, destination_, send_func_, logger_name, tag),
@@ -104,7 +103,7 @@ void BasicChromecastChannel<T>::start() {
     this->weak_dispatch([this] {
         nlohmann::json connect_msg = {{"type", "CONNECT"}};
         this->send_message(CHCHANNS_CONNECTION, connect_msg);
-        boost::system::error_code error;
+        asio::error_code error;
         this->timer_expired_callback(error);
     });
 }
@@ -140,7 +139,7 @@ void BasicChromecastChannel<T>::handle_heartbeat_channel(nlohmann::json msg) try
 }
 
 template <class T>
-void BasicChromecastChannel<T>::timer_expired_callback(const boost::system::error_code& error) {
+void BasicChromecastChannel<T>::timer_expired_callback(const asio::error_code& error) {
     if (error) return;
     nlohmann::json ping_msg = {{"type", "PING"}};
     this->send_message(CHCHANNS_HEARTBEAT, ping_msg);
@@ -148,7 +147,7 @@ void BasicChromecastChannel<T>::timer_expired_callback(const boost::system::erro
     // TODO: make this deadline configurable
     timer.expires_from_now(std::chrono::seconds(20));
     timer.async_wait(this->weak_wrap(
-            [this](const boost::system::error_code& error) { timer_expired_callback(error); }));
+            [this](const asio::error_code& error) { timer_expired_callback(error); }));
 }
 
 template <class It>
@@ -160,7 +159,7 @@ void AppChromecastChannel::start_stream(It begin, It end, std::string device_nam
                                        {"addresses", nlohmann::json::array()},
                                        {"deviceName", device_name}};
     for (It it = begin; it != end; ++it) {
-        boost::asio::ip::tcp::endpoint endpoint = *it;
+        asio::ip::tcp::endpoint endpoint = *it;
         std::stringstream ss;
         ss << "ws://" << endpoint;
 

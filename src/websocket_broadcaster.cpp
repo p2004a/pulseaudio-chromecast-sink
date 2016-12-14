@@ -20,8 +20,8 @@
 
 #include <spdlog/spdlog.h>
 
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/ip/tcp.hpp>
+#include <asio/io_service.hpp>
+#include <asio/ip/tcp.hpp>
 
 #include <json.hpp>
 
@@ -32,7 +32,7 @@
 
 using json = nlohmann::json;
 
-WebsocketBroadcaster::WebsocketBroadcaster(boost::asio::io_service& io_service_,
+WebsocketBroadcaster::WebsocketBroadcaster(asio::io_service& io_service_,
                                            SubscribeCallback subscribe_callback_,
                                            const char* logger_name)
         : io_service(io_service_), connections_strand(io_service),
@@ -53,7 +53,7 @@ WebsocketBroadcaster::WebsocketBroadcaster(boost::asio::io_service& io_service_,
     ws_server.listen(0);
     ws_server.start_accept();
 
-    boost::system::error_code error;
+    asio::error_code error;
     auto local_endpoint = ws_server.get_local_endpoint(error);
     if (error) {
         logger->error("(WebsocketBroadcaster) Couldn't get listening socket: {}", error.message());
@@ -114,9 +114,9 @@ void WebsocketBroadcaster::on_close(websocketpp::connection_hdl hdl) {
 }
 
 void WebsocketBroadcaster::on_socket_init(websocketpp::connection_hdl /*hdl*/,
-                                          boost::asio::ip::tcp::socket& s) {
+                                          asio::ip::tcp::socket& s) {
     logger->trace("(WebsocketBroadcaster) Setting new socket tcp::no_delay option");
-    boost::asio::ip::tcp::no_delay option(true);
+    asio::ip::tcp::no_delay option(true);
     s.set_option(option);
 }
 

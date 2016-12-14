@@ -25,9 +25,9 @@
 
 #include <json.hpp>
 
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/steady_timer.hpp>
-#include <boost/asio/strand.hpp>
+#include <asio/io_service.hpp>
+#include <asio/steady_timer.hpp>
+#include <asio/strand.hpp>
 
 #include "proto/cast_channel.pb.h"
 
@@ -51,11 +51,10 @@ class BaseChromecastChannel : public std::enable_shared_from_this<T> {
 
     BaseChromecastChannel(const BaseChromecastChannel&) = delete;
 
-    BaseChromecastChannel(boost::asio::io_service& io_service, std::string name_,
-                          std::string destination_, MessageFunc send_func_, const char* logger_name,
-                          private_tag);
+    BaseChromecastChannel(asio::io_service& io_service, std::string name_, std::string destination_,
+                          MessageFunc send_func_, const char* logger_name, private_tag);
 
-    static std::shared_ptr<T> create(boost::asio::io_service& io_service, std::string name_,
+    static std::shared_ptr<T> create(asio::io_service& io_service, std::string name_,
                                      std::string destination_, MessageFunc send_func_,
                                      const char* logger_name = "default");
 
@@ -83,7 +82,7 @@ class BaseChromecastChannel : public std::enable_shared_from_this<T> {
     void real_message_dispatch(const cast_channel::CastMessage& message);
 
     std::unordered_map<std::string, ParsedMessageFunc> namespace_handlers;
-    boost::asio::io_service::strand strand;
+    asio::io_service::strand strand;
     std::string name, destination;
     MessageFunc send_func;
 };
@@ -95,7 +94,7 @@ class BaseChromecastChannel : public std::enable_shared_from_this<T> {
 template <class T>
 class BasicChromecastChannel : public BaseChromecastChannel<T> {
   public:
-    BasicChromecastChannel(boost::asio::io_service& io_service, std::string name_,
+    BasicChromecastChannel(asio::io_service& io_service, std::string name_,
                            std::string destination_,
                            typename BaseChromecastChannel<T>::MessageFunc send_func_,
                            const char* logger_name, typename BaseChromecastChannel<T>::private_tag);
@@ -105,9 +104,9 @@ class BasicChromecastChannel : public BaseChromecastChannel<T> {
   private:
     void handle_connect_channel(nlohmann::json msg);
     void handle_heartbeat_channel(nlohmann::json msg);
-    void timer_expired_callback(const boost::system::error_code& error);
+    void timer_expired_callback(const asio::error_code& error);
 
-    boost::asio::steady_timer timer;
+    asio::steady_timer timer;
 };
 
 /*
@@ -117,9 +116,8 @@ class MainChromecastChannel : public BasicChromecastChannel<MainChromecastChanne
   public:
     typedef std::function<void(nlohmann::json msg)> StatusCb;
 
-    MainChromecastChannel(boost::asio::io_service& io_service, std::string name_,
-                          std::string destination_, MessageFunc send_func_, const char* logger_name,
-                          private_tag);
+    MainChromecastChannel(asio::io_service& io_service, std::string name_, std::string destination_,
+                          MessageFunc send_func_, const char* logger_name, private_tag);
 
     void load_app(std::string app_id, StatusCb loaded_callback);
     void get_status(StatusCb status_callback);
@@ -145,9 +143,8 @@ class AppChromecastChannel : public BasicChromecastChannel<AppChromecastChannel>
 
     typedef std::function<void(Result)> ResultCb;
 
-    AppChromecastChannel(boost::asio::io_service& io_service, std::string name_,
-                         std::string destination_, MessageFunc send_func_, const char* logger_name,
-                         private_tag);
+    AppChromecastChannel(asio::io_service& io_service, std::string name_, std::string destination_,
+                         MessageFunc send_func_, const char* logger_name, private_tag);
 
     template <class It>
     void start_stream(It begin, It end, std::string device_name, ResultCb);

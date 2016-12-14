@@ -23,8 +23,8 @@
 #include <string>
 #include <unordered_map>
 
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/ip/tcp.hpp>
+#include <asio/io_service.hpp>
+#include <asio/ip/tcp.hpp>
 
 #include <spdlog/spdlog.h>
 
@@ -45,11 +45,11 @@ class ChromecastFinder {
 
     struct ChromecastInfo {
         std::string name;
-        std::set<boost::asio::ip::tcp::endpoint> endpoints;
+        std::set<asio::ip::tcp::endpoint> endpoints;
         std::map<std::string, std::string> dns;
     };
 
-    ChromecastFinder(boost::asio::io_service& io_service_,
+    ChromecastFinder(asio::io_service& io_service_,
                      std::function<void(UpdateType, ChromecastInfo)> update_callback_,
                      const char* logger_name = "default");
 
@@ -89,8 +89,8 @@ class ChromecastFinder {
     struct InternalChromecastInfo {
         std::string name;
         std::map<std::string, std::string> dns;
-        std::map<boost::asio::ip::tcp::endpoint, int> endpoint_count;
-        std::map<AvahiServiceResolver*, boost::asio::ip::tcp::endpoint> endpoints;
+        std::map<asio::ip::tcp::endpoint, int> endpoint_count;
+        std::map<AvahiServiceResolver*, asio::ip::tcp::endpoint> endpoints;
     };
 
     void start_discovery();
@@ -108,17 +108,16 @@ class ChromecastFinder {
     void remove_resolver(ResolverId);
     void add_resolver(ResolverId, AvahiServiceResolver*);
     void chromecasts_update(AvahiServiceResolver* resolver, const std::string& name,
-                            const boost::asio::ip::tcp::endpoint&,
+                            const asio::ip::tcp::endpoint&,
                             const std::map<std::string, std::string>& dns);
     void chromecasts_remove(AvahiServiceResolver* resolver);
     void send_update(UpdateType, InternalChromecastInfo*) const;
 
     std::map<std::string, std::string> avahiDNSStringListToMap(AvahiStringList* node);
-    boost::asio::ip::tcp::endpoint avahiAddresToAsioEndpoint(const AvahiAddress* address,
-                                                             uint16_t port);
+    asio::ip::tcp::endpoint avahiAddresToAsioEndpoint(const AvahiAddress* address, uint16_t port);
 
     std::shared_ptr<spdlog::logger> logger;
-    boost::asio::io_service& io_service;
+    asio::io_service& io_service;
     AsioAvahiPoll poll;
     std::function<void(UpdateType, ChromecastInfo)> update_callback;
     std::function<void(const std::string&)> error_handler;

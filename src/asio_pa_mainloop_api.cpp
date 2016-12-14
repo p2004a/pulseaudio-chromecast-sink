@@ -17,7 +17,7 @@
 
 #include <cassert>
 
-#include <boost/asio/io_service.hpp>
+#include <asio/io_service.hpp>
 
 #include "asio_pa_mainloop_api.h"
 #include "generic_loop_api.h"
@@ -147,7 +147,7 @@ void AsioPulseAudioMainloop::handle_loop_quit(int retval) const {
     }
 }
 
-AsioPulseAudioMainloop::AsioPulseAudioMainloop(boost::asio::io_service& io_service_)
+AsioPulseAudioMainloop::AsioPulseAudioMainloop(asio::io_service& io_service_)
         : io_service(io_service_), strand(io_service), loop_quit_callback(nullptr) {
     api.userdata = this;
     api.io_new = io_new;

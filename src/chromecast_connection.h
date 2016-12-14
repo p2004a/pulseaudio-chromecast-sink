@@ -24,11 +24,11 @@
 
 #include <spdlog/spdlog.h>
 
-#include <boost/asio/connect.hpp>
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/ip/tcp.hpp>
-#include <boost/asio/ssl.hpp>
-#include <boost/asio/strand.hpp>
+#include <asio/connect.hpp>
+#include <asio/io_service.hpp>
+#include <asio/ip/tcp.hpp>
+#include <asio/ssl.hpp>
+#include <asio/strand.hpp>
 
 #include "proto/cast_channel.pb.h"
 
@@ -40,10 +40,9 @@ class ChromecastConnection {
 
     ChromecastConnection(const ChromecastConnection&) = delete;
 
-    ChromecastConnection(boost::asio::io_service& io_service_,
-                         boost::asio::ip::tcp::endpoint endpoint, ErrorHandler error_handler_,
-                         MessagesHandler messages_handler_, ConnectedHandler connected_handler_,
-                         const char* logger_name = "default");
+    ChromecastConnection(asio::io_service& io_service_, asio::ip::tcp::endpoint endpoint,
+                         ErrorHandler error_handler_, MessagesHandler messages_handler_,
+                         ConnectedHandler connected_handler_, const char* logger_name = "default");
 
     ~ChromecastConnection();
 
@@ -59,42 +58,42 @@ class ChromecastConnection {
       public:
         Implementation(const Implementation&) = delete;
 
-        static std::shared_ptr<Implementation> create(boost::asio::io_service& io_service_,
+        static std::shared_ptr<Implementation> create(asio::io_service& io_service_,
                                                       ErrorHandler error_handler_,
                                                       MessagesHandler messages_handler_,
                                                       ConnectedHandler connected_handler_,
                                                       const char* logger_name);
 
-        Implementation(boost::asio::io_service& io_service_, ErrorHandler error_handler_,
+        Implementation(asio::io_service& io_service_, ErrorHandler error_handler_,
                        MessagesHandler messages_handler_, ConnectedHandler connected_handler_,
                        const char* logger_name, private_tag);
 
         void send_message(const cast_channel::CastMessage& message);
 
-        void connect(boost::asio::ip::tcp::endpoint endpoint_);
+        void connect(asio::ip::tcp::endpoint endpoint_);
         void disconnect();
 
       private:
-        void connect_handler(const boost::system::error_code& error);
-        void handshake_handler(const boost::system::error_code& error);
+        void connect_handler(const asio::error_code& error);
+        void handshake_handler(const asio::error_code& error);
         void report_error(std::string message);
-        bool is_connection_end(const boost::system::error_code& error);
-        void read_op_handler_error(const boost::system::error_code& error);
+        bool is_connection_end(const asio::error_code& error);
+        void read_op_handler_error(const asio::error_code& error);
         void shutdown_tls();
         void write_from_queue();
         void read_message();
-        void handle_header_read(const boost::system::error_code& error);
-        void handle_message_data_read(const boost::system::error_code& error, std::size_t size);
+        void handle_header_read(const asio::error_code& error);
+        void handle_message_data_read(const asio::error_code& error, std::size_t size);
 
         std::shared_ptr<spdlog::logger> logger;
-        boost::asio::io_service& io_service;
-        boost::asio::io_service::strand write_strand;
-        boost::asio::ssl::context ssl_context;
-        boost::asio::ssl::stream<boost::asio::ip::tcp::socket> socket;
+        asio::io_service& io_service;
+        asio::io_service::strand write_strand;
+        asio::ssl::context ssl_context;
+        asio::ssl::stream<asio::ip::tcp::socket> socket;
         ErrorHandler error_handler;
         MessagesHandler messages_handler;
         ConnectedHandler connected_handler;
-        boost::asio::ip::tcp::endpoint endpoint;
+        asio::ip::tcp::endpoint endpoint;
 
         std::deque<std::pair<std::shared_ptr<char>, std::size_t>> write_queue;
         union {

@@ -20,8 +20,8 @@
 #include <memory>
 #include <unordered_map>
 
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/strand.hpp>
+#include <asio/io_service.hpp>
+#include <asio/strand.hpp>
 
 #include "audio_sinks_manager.h"
 #include "chromecast_channel.h"
@@ -78,7 +78,7 @@ class Chromecast : public std::enable_shared_from_this<Chromecast> {
     std::shared_ptr<AudioSink> sink;
     ChromecastFinder::ChromecastInfo info;
     std::shared_ptr<ChromecastConnection> connection;
-    boost::asio::io_service::strand strand;
+    asio::io_service::strand strand;
     std::mutex message_handler_mu;
     WebsocketBroadcaster::MessageHandler message_handler;
     bool activated;
@@ -93,7 +93,7 @@ class ChromecastsManager {
 
     ChromecastsManager(const ChromecastsManager&) = delete;
 
-    ChromecastsManager(boost::asio::io_service& io_service_, const char* logger_name = "default");
+    ChromecastsManager(asio::io_service& io_service_, const char* logger_name = "default");
 
     void set_error_handler(ErrorHandler error_handler_);
     void stop();
@@ -104,8 +104,8 @@ class ChromecastsManager {
     void propagate_error(const std::string& message);
 
     std::shared_ptr<spdlog::logger> logger;
-    boost::asio::io_service& io_service;
-    boost::asio::io_service::strand chromecasts_strand;
+    asio::io_service& io_service;
+    asio::io_service::strand chromecasts_strand;
     std::unordered_map<std::string, std::shared_ptr<Chromecast>> chromecasts;
     AudioSinksManager sinks_manager;
     ChromecastFinder finder;

@@ -17,7 +17,7 @@
 
 #include "chromecast_channel.h"
 
-MainChromecastChannel::MainChromecastChannel(boost::asio::io_service& io_service, std::string name_,
+MainChromecastChannel::MainChromecastChannel(asio::io_service& io_service, std::string name_,
                                              std::string destination_, MessageFunc send_func_,
                                              const char* logger_name, private_tag tag)
         : BasicChromecastChannel<MainChromecastChannel>(io_service, name_, destination_, send_func_,
@@ -67,7 +67,7 @@ void MainChromecastChannel::get_status(StatusCb status_callback) {
     });
 }
 
-AppChromecastChannel::AppChromecastChannel(boost::asio::io_service& io_service, std::string name_,
+AppChromecastChannel::AppChromecastChannel(asio::io_service& io_service, std::string name_,
                                            std::string destination_, MessageFunc send_func_,
                                            const char* logger_name, private_tag tag)
         : BasicChromecastChannel<AppChromecastChannel>(io_service, name_, destination_, send_func_,

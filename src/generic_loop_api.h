@@ -22,10 +22,10 @@
 #include <tuple>
 #include <type_traits>
 
-#include <boost/asio/generic/stream_protocol.hpp>
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/steady_timer.hpp>
-#include <boost/asio/strand.hpp>
+#include <asio/generic/stream_protocol.hpp>
+#include <asio/io_service.hpp>
+#include <asio/steady_timer.hpp>
+#include <asio/strand.hpp>
 
 class GenericLoopApiException : public std::runtime_error {
   public:
@@ -62,7 +62,7 @@ class IOEvent {
     typedef std::function<void(IOEvent*, Userdata...)> destroy_callback_t;
 
     IOEvent(const IOEvent&) = delete;
-    IOEvent(boost::asio::io_service::strand& strand_, boost::asio::io_service& io_service, int fd,
+    IOEvent(asio::io_service::strand& strand_, asio::io_service& io_service, int fd,
             Userdata... userdata_, callback_t callback_);
     ~IOEvent();
 
@@ -72,11 +72,11 @@ class IOEvent {
     IOEventFlags get_flags() const;
 
   private:
-    void event_handler(IOEventFlags flag, const boost::system::error_code& error);
+    void event_handler(IOEventFlags flag, const asio::error_code& error);
     void start_monitor(IOEventFlags flags);
 
-    boost::asio::io_service::strand& strand;
-    boost::asio::generic::stream_protocol::socket socket;
+    asio::io_service::strand& strand;
+    asio::generic::stream_protocol::socket socket;
     std::shared_ptr<IOEvent> this_ptr;
     std::tuple<Userdata...> userdata;
     callback_t callback;
@@ -92,7 +92,7 @@ class TimerEvent {
     typedef std::function<void(TimerEvent*, Userdata...)> destroy_callback_t;
 
     TimerEvent(const TimerEvent&) = delete;
-    TimerEvent(boost::asio::io_service::strand& strand_, boost::asio::io_service& io_service,
+    TimerEvent(asio::io_service::strand& strand_, asio::io_service& io_service,
                Userdata... userdata_, callback_t callback_);
     ~TimerEvent();
 
@@ -101,10 +101,10 @@ class TimerEvent {
     void update(const struct timeval* tv);
 
   private:
-    void expired_handler(const boost::system::error_code& error);
+    void expired_handler(const asio::error_code& error);
 
-    boost::asio::io_service::strand& strand;
-    boost::asio::steady_timer timer;
+    asio::io_service::strand& strand;
+    asio::steady_timer timer;
     struct timeval deadline;
     std::shared_ptr<TimerEvent> this_ptr;
     std::tuple<Userdata...> userdata;
@@ -120,8 +120,7 @@ class DeferedEvent {
     typedef std::function<void(DeferedEvent*, Userdata...)> destroy_callback_t;
 
     DeferedEvent(const DeferedEvent&) = delete;
-    DeferedEvent(boost::asio::io_service::strand& strand_, Userdata... userdata_,
-                 callback_t callback_);
+    DeferedEvent(asio::io_service::strand& strand_, Userdata... userdata_, callback_t callback_);
     ~DeferedEvent();
 
     void set_destroy_callback(destroy_callback_t destroy_callback_);
@@ -131,7 +130,7 @@ class DeferedEvent {
   private:
     void defered_handler();
 
-    boost::asio::io_service::strand& strand;
+    asio::io_service::strand& strand;
     std::shared_ptr<DeferedEvent> this_ptr;
     std::tuple<Userdata...> userdata;
     callback_t callback;

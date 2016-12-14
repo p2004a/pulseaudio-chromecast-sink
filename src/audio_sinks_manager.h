@@ -29,7 +29,7 @@
 #include <pulse/introspect.h>
 #include <pulse/stream.h>
 
-#include <boost/asio/io_service.hpp>
+#include <asio/io_service.hpp>
 
 #include "asio_pa_mainloop_api.h"
 
@@ -46,7 +46,7 @@ class AudioSink;
 
 class AudioSinksManager {
   public:
-    AudioSinksManager(boost::asio::io_service& io_service_, const char* logger_name = "default");
+    AudioSinksManager(asio::io_service& io_service_, const char* logger_name = "default");
 
     ~AudioSinksManager();
 
@@ -129,7 +129,7 @@ class AudioSinksManager {
     std::string get_pa_error() const;
     void mainloop_quit_handler(int retval);
 
-    boost::asio::io_service& io_service;
+    asio::io_service& io_service;
     std::shared_ptr<spdlog::logger> logger;
     AsioPulseAudioMainloop pa_mainloop;
     std::function<void(const std::string&)> error_handler;

@@ -24,7 +24,7 @@
 
 #include <spdlog/spdlog.h>
 
-#include <boost/asio/io_service.hpp>
+#include <asio/io_service.hpp>
 
 #include <pulse/context.h>
 #include <pulse/error.h>
@@ -52,7 +52,7 @@ struct SinkInfoRequest {
     pa_subscription_event_type_t event_type;  // masked!
 };
 
-AudioSinksManager::AudioSinksManager(boost::asio::io_service& io_service_, const char* logger_name)
+AudioSinksManager::AudioSinksManager(asio::io_service& io_service_, const char* logger_name)
         : io_service(io_service_), pa_mainloop(io_service), error_handler(nullptr),
           default_sink_name(""), running(true), stopping(false) {
     logger = spdlog::get(logger_name);

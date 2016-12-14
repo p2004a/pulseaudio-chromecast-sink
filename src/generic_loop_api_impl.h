@@ -25,16 +25,15 @@
 #include <tuple>
 #include <type_traits>
 
-#include <boost/asio/generic/stream_protocol.hpp>
-#include <boost/asio/io_service.hpp>
+#include <asio/generic/stream_protocol.hpp>
+#include <asio/io_service.hpp>
 
 #include "generic_loop_api.h"
 #include "util.h"
 
 template <class... Userdata>
-IOEvent<Userdata...>::IOEvent(boost::asio::io_service::strand& strand_,
-                              boost::asio::io_service& io_service, int fd, Userdata... userdata_,
-                              callback_t callback_)
+IOEvent<Userdata...>::IOEvent(asio::io_service::strand& strand_, asio::io_service& io_service,
+                              int fd, Userdata... userdata_, callback_t callback_)
         : strand(strand_), socket(io_service), this_ptr(this), userdata(userdata_...),
           callback(callback_), destroy_callback(nullptr), dead(false) {
     // We have to duplicate file descriptor because socket takes ownership of it
@@ -44,7 +43,7 @@ IOEvent<Userdata...>::IOEvent(boost::asio::io_service::strand& strand_,
         throw GenericLoopApiException("Couldn't duplicate file descriptor" +
                                       std::string(strerror(errno)));
     }
-    socket.assign(boost::asio::generic::stream_protocol::socket::protocol_type(0, 0), new_fd);
+    socket.assign(asio::generic::stream_protocol::socket::protocol_type(0, 0), new_fd);
 }
 
 template <class... Userdata>
@@ -83,13 +82,12 @@ IOEventFlags IOEvent<Userdata...>::get_flags() const {
 }
 
 template <class... Userdata>
-void IOEvent<Userdata...>::event_handler(IOEventFlags flag,
-                                         const boost::system::error_code& error) {
-    if (error == boost::asio::error::operation_aborted) return;
+void IOEvent<Userdata...>::event_handler(IOEventFlags flag, const asio::error_code& error) {
+    if (error == asio::error::operation_aborted) return;
     if (dead) return;
 
     current_flags = flag;
-    if (error && error != boost::asio::error::eof) {
+    if (error && error != asio::error::eof) {
         current_flags |= IOEventFlags::ERROR;
     }
 
@@ -107,25 +105,24 @@ void IOEvent<Userdata...>::start_monitor(IOEventFlags flags) {
     assert(!dead);
     if ((flags & IOEventFlags::INPUT) != IOEventFlags::NONE) {
         this_ptr.get();
-        socket.async_read_some(boost::asio::null_buffers(),
+        socket.async_read_some(asio::null_buffers(),
                                strand.wrap([ this_ptr_copy = this_ptr, this ](
-                                       const boost::system::error_code& error, std::size_t) {
+                                       const asio::error_code& error, std::size_t) {
                                    event_handler(IOEventFlags::INPUT, error);
                                }));
     }
     if ((flags & IOEventFlags::OUTPUT) != IOEventFlags::NONE) {
-        socket.async_write_some(boost::asio::null_buffers(),
+        socket.async_write_some(asio::null_buffers(),
                                 strand.wrap([ this_ptr_copy = this_ptr, this ](
-                                        const boost::system::error_code& error, std::size_t) {
+                                        const asio::error_code& error, std::size_t) {
                                     event_handler(IOEventFlags::OUTPUT, error);
                                 }));
     }
 }
 
 template <class... Userdata>
-TimerEvent<Userdata...>::TimerEvent(boost::asio::io_service::strand& strand_,
-                                    boost::asio::io_service& io_service, Userdata... userdata_,
-                                    callback_t callback_)
+TimerEvent<Userdata...>::TimerEvent(asio::io_service::strand& strand_, asio::io_service& io_service,
+                                    Userdata... userdata_, callback_t callback_)
         : strand(strand_), timer(io_service), this_ptr(this), userdata(userdata_...),
           callback(callback_), destroy_callback(nullptr), dead(false) {}
 
@@ -159,15 +156,16 @@ void TimerEvent<Userdata...>::update(const struct timeval* tv) {
     }
 
     deadline = *tv;
-    timer.expires_at(boost::asio::steady_timer::time_point(
-            std::chrono::seconds(deadline.tv_sec) + std::chrono::microseconds(deadline.tv_usec)));
+    timer.expires_at(asio::steady_timer::time_point(std::chrono::seconds(deadline.tv_sec) +
+                                                    std::chrono::microseconds(deadline.tv_usec)));
 
-    timer.async_wait(strand.wrap([ this_ptr_copy = this_ptr, this ](
-            const boost::system::error_code& error) { expired_handler(error); }));
+    timer.async_wait(strand.wrap([ this_ptr_copy = this_ptr, this ](const asio::error_code& error) {
+        expired_handler(error);
+    }));
 }
 
 template <class... Userdata>
-void TimerEvent<Userdata...>::expired_handler(const boost::system::error_code& error) {
+void TimerEvent<Userdata...>::expired_handler(const asio::error_code& error) {
     if (error) return;
     if (dead) return;
     call(callback,
@@ -175,8 +173,8 @@ void TimerEvent<Userdata...>::expired_handler(const boost::system::error_code& e
 }
 
 template <class... Userdata>
-DeferedEvent<Userdata...>::DeferedEvent(boost::asio::io_service::strand& strand_,
-                                        Userdata... userdata_, callback_t callback_)
+DeferedEvent<Userdata...>::DeferedEvent(asio::io_service::strand& strand_, Userdata... userdata_,
+                                        callback_t callback_)
         : strand(strand_), this_ptr(this), userdata(userdata_...), callback(callback_),
           destroy_callback(nullptr), dead(false), running(false), posted(false) {}
 

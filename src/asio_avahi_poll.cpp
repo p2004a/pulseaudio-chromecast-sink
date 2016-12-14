@@ -19,7 +19,7 @@
 
 #include <avahi-common/simple-watch.h>
 
-#include <boost/asio/io_service.hpp>
+#include <asio/io_service.hpp>
 
 #include "asio_avahi_poll.h"
 #include "generic_loop_api.h"
@@ -97,7 +97,7 @@ void AsioAvahiPoll::timeout_free(AvahiTimeout* t) {
     reinterpret_cast<AvahiTimerEvent*>(t)->free();
 }
 
-AsioAvahiPoll::AsioAvahiPoll(boost::asio::io_service& io_service_)
+AsioAvahiPoll::AsioAvahiPoll(asio::io_service& io_service_)
         : io_service(io_service_), strand(io_service) {
     avahi_poll.userdata = this;
     avahi_poll.watch_new = watch_new;

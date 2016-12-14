@@ -20,9 +20,9 @@
 
 #include <spdlog/spdlog.h>
 
-#include <boost/asio/io_service.hpp>
+#include <asio/io_service.hpp>
 
-#include <boost/asio/strand.hpp>
+#include <asio/strand.hpp>
 #include <websocketpp/config/asio_no_tls.hpp>
 #include <websocketpp/server.hpp>
 
@@ -40,8 +40,7 @@ class WebsocketBroadcaster {
 
     WebsocketBroadcaster(const WebsocketBroadcaster&) = delete;
 
-    WebsocketBroadcaster(boost::asio::io_service& io_service_,
-                         SubscribeCallback subscribe_callback_,
+    WebsocketBroadcaster(asio::io_service& io_service_, SubscribeCallback subscribe_callback_,
                          const char* logger_name = "default");
 
     void stop();
@@ -59,12 +58,12 @@ class WebsocketBroadcaster {
     void on_message(websocketpp::connection_hdl hdl, WebsocketServer::message_ptr);
     void on_open(websocketpp::connection_hdl hdl);
     void on_close(websocketpp::connection_hdl hdl);
-    void on_socket_init(websocketpp::connection_hdl hdl, boost::asio::ip::tcp::socket& s);
+    void on_socket_init(websocketpp::connection_hdl hdl, asio::ip::tcp::socket& s);
 
     uint16_t port;
     std::shared_ptr<spdlog::logger> logger;
-    boost::asio::io_service& io_service;
-    boost::asio::io_service::strand connections_strand;
+    asio::io_service& io_service;
+    asio::io_service::strand connections_strand;
     std::set<websocketpp::connection_hdl, std::owner_less<websocketpp::connection_hdl>> connections;
     WebsocketServer ws_server;
     SubscribeCallback subscribe_callback;

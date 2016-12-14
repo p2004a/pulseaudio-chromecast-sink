@@ -19,6 +19,6 @@
 
 #include <vector>
 
-#include <boost/asio/ip/tcp.hpp>
+#include <asio/ip/tcp.hpp>
 
-std::vector<boost::asio::ip::address> get_local_addresses();
+std::vector<asio::ip::address> get_local_addresses();

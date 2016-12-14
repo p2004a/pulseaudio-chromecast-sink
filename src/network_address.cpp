@@ -29,7 +29,7 @@
 #include <cstdlib>
 #include <cstring>
 
-#include <boost/asio/ip/tcp.hpp>
+#include <asio/ip/tcp.hpp>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -37,7 +37,7 @@
 #include "defer.h"
 #include "network_address.h"
 
-std::vector<boost::asio::ip::address> get_local_addresses() {
+std::vector<asio::ip::address> get_local_addresses() {
     struct ifaddrs* ifaddr;
     if (getifaddrs(&ifaddr) == -1) {
         throw std::runtime_error("Couldn't get interface addresses with getifaddrs");
@@ -46,7 +46,7 @@ std::vector<boost::asio::ip::address> get_local_addresses() {
         freeifaddrs(ifaddr);
     };
 
-    std::vector<boost::asio::ip::address> result;
+    std::vector<asio::ip::address> result;
     for (struct ifaddrs* ifa = ifaddr; ifa != NULL; ifa = ifa->ifa_next) {
         if (ifa->ifa_addr == NULL) {
             continue;
@@ -69,7 +69,7 @@ std::vector<boost::asio::ip::address> get_local_addresses() {
             throw std::runtime_error("getnameinfo() failed: " + std::string(gai_strerror(status)));
         }
 
-        result.emplace_back(boost::asio::ip::address::from_string(host));
+        result.emplace_back(asio::ip::address::from_string(host));
     }
 
     return result;

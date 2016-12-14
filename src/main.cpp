@@ -23,7 +23,7 @@
 #include <thread>
 #include <vector>
 
-#include <boost/asio.hpp>
+#include <asio.hpp>
 
 #include <spdlog/spdlog.h>
 
@@ -34,11 +34,11 @@ int main() {
 
     default_logger->set_level(spdlog::level::debug);
 
-    boost::asio::io_service io_service;
+    asio::io_service io_service;
 
     ChromecastsManager manager(io_service, "default");
 
-    boost::asio::signal_set signals(io_service, SIGINT, SIGTERM);
+    asio::signal_set signals(io_service, SIGINT, SIGTERM);
 
     auto stop_everything = [&] {
         manager.stop();
@@ -50,7 +50,7 @@ int main() {
         stop_everything();
     });
 
-    signals.async_wait([&](const boost::system::error_code& error, int signal_number) {
+    signals.async_wait([&](const asio::error_code& error, int signal_number) {
         if (error) return;
         default_logger->info("Got signal {}: {}. Exiting...", signal_number,
                              strsignal(signal_number));

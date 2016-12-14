@@ -34,7 +34,7 @@
 #include <pulse/mainloop.h>
 #include <pulse/stream.h>
 
-#include <boost/asio.hpp>
+#include <asio.hpp>
 
 #include "asio_pa_mainloop_api.h"
 #include "defer.h"
@@ -233,7 +233,7 @@ void start_stuff(pa_mainloop_api* loop_api, pa_context** context) {
 int main() {
     pa_context* context;
 #if USE_ASIO_LOOP
-    boost::asio::io_service io_service;
+    asio::io_service io_service;
     AsioPulseAudioMainloop loop(io_service);
     loop.set_loop_quit_callback([](int retval) {
         if (retval != 0) {

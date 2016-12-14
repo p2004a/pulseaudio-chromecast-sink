@@ -20,8 +20,7 @@
 #include "chromecasts_manager.h"
 #include "network_address.h"
 
-ChromecastsManager::ChromecastsManager(boost::asio::io_service& io_service_,
-                                       const char* logger_name)
+ChromecastsManager::ChromecastsManager(asio::io_service& io_service_, const char* logger_name)
         : io_service(io_service_), chromecasts_strand(io_service),
           sinks_manager(io_service, logger_name),
           finder(io_service,
@@ -197,7 +196,7 @@ void Chromecast::handle_app_load(nlohmann::json msg) try {
         app_channel->start();
 
         auto addresses = get_local_addresses();
-        std::vector<boost::asio::ip::tcp::endpoint> endpoints;
+        std::vector<asio::ip::tcp::endpoint> endpoints;
         for (auto addr : addresses) {
             endpoints.emplace_back(addr, manager.broadcaster.get_port());
         }

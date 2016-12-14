@@ -22,8 +22,8 @@
 
 #include <pulse/mainloop-api.h>
 
-#include <boost/asio/io_service.hpp>
-#include <boost/asio/strand.hpp>
+#include <asio/io_service.hpp>
+#include <asio/strand.hpp>
 
 class AsioPulseAudioMailoopUnexpectedEnd : public std::runtime_error {
   public:
@@ -41,13 +41,13 @@ class AsioPulseAudioMailoopUnexpectedEnd : public std::runtime_error {
 class AsioPulseAudioMainloop {
   public:
     AsioPulseAudioMainloop(const AsioPulseAudioMainloop&) = delete;
-    AsioPulseAudioMainloop(boost::asio::io_service& io_service_);
+    AsioPulseAudioMainloop(asio::io_service& io_service_);
 
     pa_mainloop_api* get_api() {
         return &api;
     }
 
-    boost::asio::io_service::strand& get_strand() {
+    asio::io_service::strand& get_strand() {
         return strand;
     }
 
@@ -75,8 +75,8 @@ class AsioPulseAudioMainloop {
     static void defer_set_destroy(pa_defer_event* e, pa_defer_event_destroy_cb_t cb);
     static void quit(pa_mainloop_api* a, int retval);
 
-    boost::asio::io_service& io_service;
-    boost::asio::io_service::strand strand;
+    asio::io_service& io_service;
+    asio::io_service::strand strand;
     pa_mainloop_api api;
     std::function<void(int)> loop_quit_callback;
 
