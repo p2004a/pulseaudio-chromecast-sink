@@ -56,12 +56,11 @@ AudioSinksManager::AudioSinksManager(asio::io_service& io_service_, const char* 
         : io_service(io_service_), pa_mainloop(io_service), error_handler(nullptr),
           default_sink_name(""), running(true), stopping(false) {
     logger = spdlog::get(logger_name);
-    pa_mainloop.get_strand().post([this] { start_pa_connection(); });
     pa_mainloop.set_loop_quit_callback([this](int retval) { mainloop_quit_handler(retval); });
 }
 
-void AudioSinksManager::set_error_handler(std::function<void(const std::string&)> error_handler_) {
-    error_handler = error_handler_;
+void AudioSinksManager::start() {
+    pa_mainloop.get_strand().post([this] { start_pa_connection(); });
 }
 
 AudioSinksManager::~AudioSinksManager() {

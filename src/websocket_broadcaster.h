@@ -36,14 +36,18 @@ class WebsocketBroadcaster {
         websocketpp::connection_hdl hdl;
         WebsocketBroadcaster* this_ptr = nullptr;
     };
-    typedef std::function<void(MessageHandler, std::string)> SubscribeCallback;
+    typedef std::function<void(MessageHandler, std::string)> SubscribeHandler;
 
     WebsocketBroadcaster(const WebsocketBroadcaster&) = delete;
 
-    WebsocketBroadcaster(asio::io_service& io_service_, SubscribeCallback subscribe_callback_,
-                         const char* logger_name = "default");
+    WebsocketBroadcaster(asio::io_service& io_service_, const char* logger_name = "default");
 
+    void start();
     void stop();
+
+    void set_subscribe_handler(SubscribeHandler subscribe_handler_) {
+        subscribe_handler = subscribe_handler_;
+    }
 
     static void send_samples(MessageHandler hdl, const AudioSample* samples, size_t num);
 
@@ -66,5 +70,5 @@ class WebsocketBroadcaster {
     asio::io_service::strand connections_strand;
     std::set<websocketpp::connection_hdl, std::owner_less<websocketpp::connection_hdl>> connections;
     WebsocketServer ws_server;
-    SubscribeCallback subscribe_callback;
+    SubscribeHandler subscribe_handler = nullptr;
 };

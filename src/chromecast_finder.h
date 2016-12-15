@@ -49,16 +49,24 @@ class ChromecastFinder {
         std::map<std::string, std::string> dns;
     };
 
-    ChromecastFinder(asio::io_service& io_service_,
-                     std::function<void(UpdateType, ChromecastInfo)> update_callback_,
-                     const char* logger_name = "default");
+    typedef std::function<void(UpdateType, ChromecastInfo)> UpdateHandler;
+    typedef std::function<void(const std::string&)> ErrorHandler;
+
+    ChromecastFinder(asio::io_service& io_service_, const char* logger_name = "default");
 
     ~ChromecastFinder();
 
+    void start();
     void stop();
 
     // This function have to be called *before* starting event loop!
-    void set_error_handler(std::function<void(const std::string&)>);
+    void set_error_handler(ErrorHandler error_handler_) {
+        error_handler = error_handler_;
+    }
+
+    void set_update_handler(UpdateHandler update_handler_) {
+        update_handler = update_handler_;
+    }
 
   private:
     /*
@@ -119,8 +127,8 @@ class ChromecastFinder {
     std::shared_ptr<spdlog::logger> logger;
     asio::io_service& io_service;
     AsioAvahiPoll poll;
-    std::function<void(UpdateType, ChromecastInfo)> update_callback;
-    std::function<void(const std::string&)> error_handler;
+    UpdateHandler update_handler = nullptr;
+    ErrorHandler error_handler = nullptr;
     AvahiClient* avahi_client = nullptr;
     AvahiServiceBrowser* avahi_browser = nullptr;
     bool stopped;

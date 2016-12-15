@@ -46,14 +46,19 @@ class AudioSink;
 
 class AudioSinksManager {
   public:
+    typedef std::function<void(const std::string&)> ErrorHandler;
+
     AudioSinksManager(asio::io_service& io_service_, const char* logger_name = "default");
 
     ~AudioSinksManager();
 
+    void start();
     void stop();
 
     // This function have to be called *before* starting event loop!
-    void set_error_handler(std::function<void(const std::string&)>);
+    void set_error_handler(ErrorHandler error_handler_) {
+        error_handler = error_handler_;
+    }
 
     std::shared_ptr<AudioSink> create_new_sink(std::string name);
 
@@ -132,7 +137,7 @@ class AudioSinksManager {
     asio::io_service& io_service;
     std::shared_ptr<spdlog::logger> logger;
     AsioPulseAudioMainloop pa_mainloop;
-    std::function<void(const std::string&)> error_handler;
+    ErrorHandler error_handler;
     // insert in AudioSinksManager::create_new_sink,
     // remove in AudioSinksManager::unregister_audio_sink
     std::unordered_set<std::shared_ptr<InternalAudioSink>> audio_sinks;

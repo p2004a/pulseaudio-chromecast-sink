@@ -95,8 +95,12 @@ class ChromecastsManager {
 
     ChromecastsManager(asio::io_service& io_service_, const char* logger_name = "default");
 
-    void set_error_handler(ErrorHandler error_handler_);
+    void start();
     void stop();
+
+    void set_error_handler(ErrorHandler error_handler_) {
+        error_handler = error_handler_;
+    }
 
   private:
     void finder_callback(ChromecastFinder::UpdateType type, ChromecastFinder::ChromecastInfo info);

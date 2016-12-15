@@ -22,16 +22,14 @@
 
 ChromecastsManager::ChromecastsManager(asio::io_service& io_service_, const char* logger_name)
         : io_service(io_service_), chromecasts_strand(io_service),
-          sinks_manager(io_service, logger_name),
-          finder(io_service,
-                 chromecasts_strand.wrap(std::bind(&ChromecastsManager::finder_callback, this,
-                                                   std::placeholders::_1, std::placeholders::_2)),
-                 logger_name),
-          broadcaster(io_service, chromecasts_strand.wrap(std::bind(
-                                          &ChromecastsManager::websocket_subscribe_callback, this,
-                                          std::placeholders::_1, std::placeholders::_2))),
-          error_handler(nullptr) {
+          sinks_manager(io_service, logger_name), finder(io_service, logger_name),
+          broadcaster(io_service, logger_name), error_handler(nullptr) {
     logger = spdlog::get(logger_name);
+
+    finder.set_update_handler(chromecasts_strand.wrap(
+            [this](ChromecastFinder::UpdateType type, ChromecastFinder::ChromecastInfo info) {
+                finder_callback(type, info);
+            }));
 
     finder.set_error_handler([this](const std::string& message) {
         propagate_error("ChromecastFinder: " + message);
@@ -39,6 +37,11 @@ ChromecastsManager::ChromecastsManager(asio::io_service& io_service_, const char
 
     sinks_manager.set_error_handler(
             [&](const std::string& message) { propagate_error("AudioSinksManager: " + message); });
+
+    broadcaster.set_subscribe_handler(chromecasts_strand.wrap(
+            [this](WebsocketBroadcaster::MessageHandler handler, std::string name) {
+                websocket_subscribe_callback(handler, name);
+            }));
 }
 
 void ChromecastsManager::finder_callback(ChromecastFinder::UpdateType type,
@@ -73,14 +76,16 @@ void ChromecastsManager::websocket_subscribe_callback(WebsocketBroadcaster::Mess
     }
 }
 
+void ChromecastsManager::start() {
+    broadcaster.start();
+    sinks_manager.start();
+    finder.start();
+}
+
 void ChromecastsManager::stop() {
     finder.stop();
     sinks_manager.stop();
     broadcaster.stop();
-}
-
-void ChromecastsManager::set_error_handler(ErrorHandler error_handler_) {
-    error_handler = error_handler_;
 }
 
 void ChromecastsManager::propagate_error(const std::string& message) {

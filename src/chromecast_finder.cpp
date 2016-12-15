@@ -35,17 +35,18 @@
 #include "chromecast_finder.h"
 #include "defer.h"
 
-ChromecastFinder::ChromecastFinder(asio::io_service& io_service_,
-                                   std::function<void(UpdateType, ChromecastInfo)> update_callback_,
-                                   const char* logger_name)
-        : io_service(io_service_), poll(io_service), update_callback(update_callback_),
-          error_handler(nullptr) {
+ChromecastFinder::ChromecastFinder(asio::io_service& io_service_, const char* logger_name)
+        : io_service(io_service_), poll(io_service) {
     logger = spdlog::get(logger_name);
-    poll.get_strand().post([this] { start_discovery(); });
 }
 
 ChromecastFinder::~ChromecastFinder() {
     assert(avahi_client == nullptr && "Tried to destruct running instance of ChromecastFinder");
+}
+
+void ChromecastFinder::start() {
+    assert(update_handler != nullptr);
+    poll.get_strand().post([this] { start_discovery(); });
 }
 
 void ChromecastFinder::stop() {
@@ -72,10 +73,6 @@ void ChromecastFinder::stop() {
         }
         logger->debug("(ChromecastFinder) Stopped running");
     });
-}
-
-void ChromecastFinder::set_error_handler(std::function<void(const std::string&)> error_handler_) {
-    error_handler = error_handler_;
 }
 
 void ChromecastFinder::start_discovery() {
@@ -358,5 +355,5 @@ void ChromecastFinder::send_update(UpdateType type, InternalChromecastInfo* chro
     for (const auto& elem : chromecast->endpoint_count) {
         info.endpoints.insert(elem.first);
     }
-    update_callback(type, info);
+    update_handler(type, info);
 }

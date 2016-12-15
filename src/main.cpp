@@ -57,6 +57,8 @@ int main() {
         stop_everything();
     });
 
+    manager.start();
+
     std::vector<std::thread> threads;
     for (unsigned i = 0; i < std::thread::hardware_concurrency(); ++i) {
         threads.emplace_back([&io_service]() { io_service.run(); });

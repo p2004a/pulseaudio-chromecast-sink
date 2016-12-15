@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <cassert>
 #include <functional>
 #include <string>
 
@@ -32,11 +33,8 @@
 
 using json = nlohmann::json;
 
-WebsocketBroadcaster::WebsocketBroadcaster(asio::io_service& io_service_,
-                                           SubscribeCallback subscribe_callback_,
-                                           const char* logger_name)
-        : io_service(io_service_), connections_strand(io_service),
-          subscribe_callback(subscribe_callback_) {
+WebsocketBroadcaster::WebsocketBroadcaster(asio::io_service& io_service_, const char* logger_name)
+        : io_service(io_service_), connections_strand(io_service) {
     using namespace std::placeholders;
 
     logger = spdlog::get(logger_name);
@@ -49,18 +47,7 @@ WebsocketBroadcaster::WebsocketBroadcaster(asio::io_service& io_service_,
     ws_server.set_message_handler(std::bind(&WebsocketBroadcaster::on_message, this, _1, _2));
     ws_server.set_socket_init_handler(
             std::bind(&WebsocketBroadcaster::on_socket_init, this, _1, _2));
-
     ws_server.listen(0);
-    ws_server.start_accept();
-
-    asio::error_code error;
-    auto local_endpoint = ws_server.get_local_endpoint(error);
-    if (error) {
-        logger->error("(WebsocketBroadcaster) Couldn't get listening socket: {}", error.message());
-    } else {
-        port = local_endpoint.port();
-        logger->info("(WebsocketBroadcaster) Connecting on port {}", port);
-    }
 }
 
 void WebsocketBroadcaster::on_message(websocketpp::connection_hdl hdl,
@@ -79,7 +66,7 @@ void WebsocketBroadcaster::on_message(websocketpp::connection_hdl hdl,
         MessageHandler message_handler;
         message_handler.hdl = hdl;
         message_handler.this_ptr = this;
-        subscribe_callback(message_handler, chromecast_name);
+        subscribe_handler(message_handler, chromecast_name);
     } else {
         logger->warn("(WebsocketBroadcaster) Unexpected message type: {}", type);
     }
@@ -101,6 +88,21 @@ void WebsocketBroadcaster::stop() {
             }
         }
     });
+}
+
+void WebsocketBroadcaster::start() {
+    assert(subscribe_handler != nullptr);
+
+    ws_server.start_accept();
+
+    asio::error_code error;
+    auto local_endpoint = ws_server.get_local_endpoint(error);
+    if (error) {
+        logger->error("(WebsocketBroadcaster) Couldn't get listening socket: {}", error.message());
+    } else {
+        port = local_endpoint.port();
+        logger->info("(WebsocketBroadcaster) Connecting on port {}", port);
+    }
 }
 
 void WebsocketBroadcaster::on_open(websocketpp::connection_hdl hdl) {
