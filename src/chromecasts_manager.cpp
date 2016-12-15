@@ -143,13 +143,14 @@ void Chromecast::activation_callback(bool activate) {
     activated = activate;
     if (activated) {
         manager.logger->info("(Chromecast '{}') Activated!", info.name);
-        connection = std::make_shared<ChromecastConnection>(
-                manager.io_service, *info.endpoints.begin(),
-                mem_weak_wrap(&Chromecast::connection_error_handler),
-                mem_weak_wrap(&Chromecast::connection_message_handler),
-                mem_weak_wrap(&Chromecast::connection_connected_handler));
+        connection = ChromecastConnection::create(manager.io_service, *info.endpoints.begin());
+        connection->set_error_handler(mem_weak_wrap(&Chromecast::connection_error_handler));
+        connection->set_connected_handler(mem_weak_wrap(&Chromecast::connection_connected_handler));
+        connection->set_messages_handler(mem_weak_wrap(&Chromecast::connection_message_handler));
+        connection->start();
     } else {
         manager.logger->info("(Chromecast '{}') Deactivated!", info.name);
+        connection->stop();
         connection.reset();
         main_channel.reset();
         app_channel.reset();
@@ -158,6 +159,7 @@ void Chromecast::activation_callback(bool activate) {
 
 void Chromecast::connection_error_handler(std::string message) {
     manager.logger->error("(Chromecast '{}') connection error: {}", info.name, message);
+    connection->stop();
     connection.reset();
     main_channel.reset();
     app_channel.reset();
@@ -179,6 +181,7 @@ void Chromecast::connection_connected_handler(bool connected) {
     } else {
         manager.logger->info("(Chromecast '{}') I'm not connected!", info.name);
         // TODO: add support for graceful app unloading
+        connection->stop();
         connection.reset();
         main_channel.reset();
         app_channel.reset();

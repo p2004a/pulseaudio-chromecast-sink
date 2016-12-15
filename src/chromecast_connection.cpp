@@ -16,6 +16,7 @@
  */
 
 #include <endian.h>
+#include <cassert>
 
 #include <asio/io_service.hpp>
 #include <asio/ip/tcp.hpp>
@@ -28,43 +29,25 @@
 #include "chromecast_connection.h"
 
 ChromecastConnection::ChromecastConnection(asio::io_service& io_service_,
-                                           asio::ip::tcp::endpoint endpoint,
-                                           ErrorHandler error_handler_,
-                                           MessagesHandler messages_handler_,
-                                           ConnectedHandler connected_handler_,
-                                           const char* logger_name)
-        : connection_implementation(Implementation::create(io_service_, error_handler_,
-                                                           messages_handler_, connected_handler_,
-                                                           logger_name)) {
-    connection_implementation->connect(endpoint);
-}
-
-ChromecastConnection::~ChromecastConnection() {
-    connection_implementation->disconnect();
-}
-
-ChromecastConnection::Implementation::Implementation(asio::io_service& io_service_,
-                                                     ErrorHandler error_handler_,
-                                                     MessagesHandler messages_handler_,
-                                                     ConnectedHandler connected_handler_,
-                                                     const char* logger_name, private_tag)
+                                           asio::ip::tcp::endpoint endpoint_,
+                                           const char* logger_name, private_tag)
         : io_service(io_service_), write_strand(io_service),
           ssl_context(asio::ssl::context::sslv23_client), socket(io_service, ssl_context),
-          error_handler(error_handler_), messages_handler(messages_handler_),
-          connected_handler(connected_handler_), read_buffer_size(0) {
+          endpoint(endpoint_) {
     logger = spdlog::get(logger_name);
 }
 
-std::shared_ptr<ChromecastConnection::Implementation> ChromecastConnection::Implementation::create(
-        asio::io_service& io_service_, ErrorHandler report_error_,
-        MessagesHandler messages_handler_, ConnectedHandler connected_handler_,
-        const char* logger_name) {
-    return std::make_shared<Implementation>(io_service_, report_error_, messages_handler_,
-                                            connected_handler_, logger_name, private_tag{});
+std::shared_ptr<ChromecastConnection> ChromecastConnection::create(asio::io_service& io_service,
+                                                                   asio::ip::tcp::endpoint endpoint,
+                                                                   const char* logger_name) {
+    return std::make_shared<ChromecastConnection>(io_service, endpoint, logger_name, private_tag{});
 }
 
-void ChromecastConnection::Implementation::connect(asio::ip::tcp::endpoint endpoint_) {
-    endpoint = endpoint_;
+void ChromecastConnection::start() {
+    assert(connected_handler != nullptr);
+    assert(error_handler != nullptr);
+    assert(messages_handler != nullptr);
+
     logger->trace("(ChromecastConnection) Connecting to {}", endpoint.address().to_string());
 
     socket.lowest_layer().async_connect(
@@ -73,19 +56,19 @@ void ChromecastConnection::Implementation::connect(asio::ip::tcp::endpoint endpo
             });
 }
 
-void ChromecastConnection::Implementation::disconnect() {
+void ChromecastConnection::stop() {
     if (socket.lowest_layer().is_open()) {
         logger->trace("(ChromecastConnection) Disconnecting");
         socket.lowest_layer().cancel();
     }
 }
 
-void ChromecastConnection::Implementation::report_error(std::string message) {
+void ChromecastConnection::report_error(std::string message) {
     socket.lowest_layer().close();
     error_handler(message);
 }
 
-void ChromecastConnection::Implementation::connect_handler(const asio::error_code& error) {
+void ChromecastConnection::connect_handler(const asio::error_code& error) {
     if (error) {
         if (error != asio::error::operation_aborted) {
             report_error("Failed to connect to Chromecast: " + error.message());
@@ -97,7 +80,7 @@ void ChromecastConnection::Implementation::connect_handler(const asio::error_cod
     }
 }
 
-void ChromecastConnection::Implementation::handshake_handler(const asio::error_code& error) {
+void ChromecastConnection::handshake_handler(const asio::error_code& error) {
     if (error) {
         if (error != asio::error::operation_aborted) {
             report_error("TLS handshake failed: " + error.message());
@@ -108,7 +91,7 @@ void ChromecastConnection::Implementation::handshake_handler(const asio::error_c
     }
 }
 
-bool ChromecastConnection::Implementation::is_connection_end(const asio::error_code& error) {
+bool ChromecastConnection::is_connection_end(const asio::error_code& error) {
     if (error == asio::error::eof) {
         logger->warn("(ChromecastConnection) Got error::eof, that was unexpected");
     }
@@ -116,7 +99,7 @@ bool ChromecastConnection::Implementation::is_connection_end(const asio::error_c
     return error == asio::ssl::error::stream_truncated || error == asio::error::eof;
 }
 
-void ChromecastConnection::Implementation::read_op_handler_error(const asio::error_code& error) {
+void ChromecastConnection::read_op_handler_error(const asio::error_code& error) {
     if (error == asio::error::operation_aborted) {
         if (socket.lowest_layer().is_open()) {
             shutdown_tls();
@@ -128,7 +111,7 @@ void ChromecastConnection::Implementation::read_op_handler_error(const asio::err
     }
 }
 
-void ChromecastConnection::Implementation::send_message(const cast_channel::CastMessage& message) {
+void ChromecastConnection::send_message(const cast_channel::CastMessage& message) {
     std::size_t buffer_size = sizeof(uint32_t) + message.ByteSize();
     std::shared_ptr<char> data(new char[buffer_size], std::default_delete<char[]>());
 
@@ -146,7 +129,7 @@ void ChromecastConnection::Implementation::send_message(const cast_channel::Cast
             });
 }
 
-void ChromecastConnection::Implementation::shutdown_tls() {
+void ChromecastConnection::shutdown_tls() {
     socket.async_shutdown([ this, this_ptr = shared_from_this() ](const asio::error_code& error) {
         if (is_connection_end(error)) {
             logger->trace("ChromecastConnection) TLS connection closed");
@@ -157,7 +140,7 @@ void ChromecastConnection::Implementation::shutdown_tls() {
     });
 }
 
-void ChromecastConnection::Implementation::write_from_queue() {
+void ChromecastConnection::write_from_queue() {
     auto& buff = write_queue.front();
 
     asio::async_write(
@@ -176,13 +159,13 @@ void ChromecastConnection::Implementation::write_from_queue() {
             });
 }
 
-void ChromecastConnection::Implementation::read_message() {
+void ChromecastConnection::read_message() {
     asio::async_read(socket, asio::buffer(&message_header.data, 4), [
         this, this_ptr = shared_from_this()
     ](const asio::error_code& error, std::size_t) { handle_header_read(error); });
 }
 
-void ChromecastConnection::Implementation::handle_header_read(const asio::error_code& error) {
+void ChromecastConnection::handle_header_read(const asio::error_code& error) {
     if (error) {
         read_op_handler_error(error);
     } else {
@@ -204,8 +187,8 @@ void ChromecastConnection::Implementation::handle_header_read(const asio::error_
     }
 }
 
-void ChromecastConnection::Implementation::handle_message_data_read(const asio::error_code& error,
-                                                                    std::size_t size) {
+void ChromecastConnection::handle_message_data_read(const asio::error_code& error,
+                                                    std::size_t size) {
     if (error) {
         read_op_handler_error(error);
     } else {
