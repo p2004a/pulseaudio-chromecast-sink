@@ -60,7 +60,7 @@ class AudioSinksManager {
         error_handler = error_handler_;
     }
 
-    std::shared_ptr<AudioSink> create_new_sink(std::string name);
+    std::shared_ptr<AudioSink> create_new_sink(std::string name, std::string pretty_name);
 
   private:
     class InternalAudioSink : public std::enable_shared_from_this<InternalAudioSink> {
@@ -69,7 +69,7 @@ class AudioSinksManager {
         typedef std::function<void(double, double, bool)> VolumeCallback;
         typedef std::function<void(bool)> ActivationCallback;
 
-        InternalAudioSink(AudioSinksManager* manager_, std::string name_);
+        InternalAudioSink(AudioSinksManager* manager_, std::string name_, std::string pretty_name_);
         ~InternalAudioSink();
 
         const std::string& get_name() const;
@@ -102,7 +102,7 @@ class AudioSinksManager {
         ActivationCallback activation_callback;
         VolumeCallback volume_callback;
         pa_stream* stream;
-        std::string name, identifier;
+        std::string name, pretty_name, identifier;
         uint32_t module_idx, sink_idx;
         pa_cvolume volume;
         bool muted;

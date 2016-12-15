@@ -101,7 +101,12 @@ Chromecast::Chromecast(ChromecastsManager& manager_, ChromecastFinder::Chromecas
         : manager(manager_), info(info_), strand(manager.io_service), activated(false) {}
 
 void Chromecast::init() {
-    sink = manager.sinks_manager.create_new_sink(info.name);
+    std::string* pretty_name = &info.name;
+    auto it = info.dns.find("fn");
+    if (it != info.dns.end()) {
+        pretty_name = &it->second;
+    }
+    sink = manager.sinks_manager.create_new_sink(info.name, *pretty_name);
 
     sink->set_activation_callback(mem_weak_wrap(&Chromecast::activation_callback));
     sink->set_volume_callback(mem_weak_wrap(&Chromecast::volume_callback));

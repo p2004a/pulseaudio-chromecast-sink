@@ -338,9 +338,10 @@ void AudioSinksManager::stop() {
     });
 }
 
-std::shared_ptr<AudioSink> AudioSinksManager::create_new_sink(std::string name) {
-    auto internal_sink =
-            std::shared_ptr<InternalAudioSink>(new InternalAudioSink(this, std::move(name)));
+std::shared_ptr<AudioSink> AudioSinksManager::create_new_sink(std::string name,
+                                                              std::string pretty_name) {
+    auto internal_sink = std::shared_ptr<InternalAudioSink>(
+            new InternalAudioSink(this, std::move(name), std::move(pretty_name)));
     auto sink = std::shared_ptr<AudioSink>(new AudioSink(internal_sink));
     pa_mainloop.get_strand().dispatch([this, internal_sink]() {
         if (stopping) {
@@ -377,9 +378,10 @@ void AudioSinksManager::unregister_audio_sink(std::shared_ptr<InternalAudioSink>
 }
 
 AudioSinksManager::InternalAudioSink::InternalAudioSink(AudioSinksManager* manager_,
-                                                        std::string name_)
-        : manager(manager_), name(name_), sink_idx(static_cast<uint32_t>(-1)), state(State::NONE),
-          default_sink(false), activated(false), num_sink_inputs(0) {
+                                                        std::string name_, std::string pretty_name_)
+        : manager(manager_), name(name_), pretty_name(pretty_name_),
+          sink_idx(static_cast<uint32_t>(-1)), state(State::NONE), default_sink(false),
+          activated(false), num_sink_inputs(0) {
     identifier = generate_random_string(10);
     volume.channels = 0;
 }
@@ -430,11 +432,11 @@ void AudioSinksManager::InternalAudioSink::start_sink() {
     assert(state == State::NONE);
     manager->logger->trace("(AudioSink '{}') Starting sink", name);
     state = State::STARTED;
-    std::string escaped_name =
-            replace_all(replace_all(replace_all(name, "\\", "\\\\"), " ", "\\ "), "\"", "\\\"");
+    std::string escaped_name = replace_all(
+            replace_all(replace_all(pretty_name, "\\", "\\\\"), " ", "\\ "), "\"", "\\\"");
     std::stringstream arguments;
-    arguments << "sink_name=" << identifier << " sink_properties=device.description=\""
-              << escaped_name << "\"";
+    arguments << "sink_name=" << identifier
+              << " sink_properties=device.description=\"(Chromecast)\\ " << escaped_name << "\"";
     pa_operation* op = pa_context_load_module(manager->context, "module-null-sink",
                                               arguments.str().c_str(), module_load_callback, this);
     if (op) {
