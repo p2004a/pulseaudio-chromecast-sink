@@ -48,18 +48,33 @@ void ChromecastsManager::finder_callback(ChromecastFinder::UpdateType type,
                                          ChromecastFinder::ChromecastInfo info) {
     assert(chromecasts_strand.running_in_this_thread());
 
-    if (type == ChromecastFinder::UpdateType::NEW) {
-        logger->info("New Chromecast '{}'", info.name);
-    } else if (type == ChromecastFinder::UpdateType::REMOVE) {
-        logger->info("Chromecast '{}' removed", info.name);
-    }
-
     switch (type) {
-        case ChromecastFinder::UpdateType::NEW:
-            chromecasts[info.name] = Chromecast::create(*this, info);
+        case ChromecastFinder::UpdateType::NEW: {
+            logger->info("(ChromecastsManager) New Chromecast '{}'", info.name);
+            auto chromecast = Chromecast::create(*this, info);
+            chromecast->start();
+            chromecasts[info.name] = chromecast;
             break;
-        case ChromecastFinder::UpdateType::UPDATE: chromecasts[info.name]->update_info(info); break;
-        case ChromecastFinder::UpdateType::REMOVE: chromecasts.erase(info.name); break;
+        }
+        case ChromecastFinder::UpdateType::UPDATE: {
+            chromecasts[info.name]->update_info(info);
+            break;
+        }
+        case ChromecastFinder::UpdateType::REMOVE: {
+            auto it = chromecasts.find(info.name);
+            if (it != chromecasts.end()) {
+                it->second->stop();
+                chromecasts.erase(it);
+                logger->info("(ChromecastsManager) Chromecast '{}' removed", info.name);
+            } else {
+                logger->info(
+                        "(ChromecastsManager) Chromecast '{}' requested to remove, but not "
+                        "existing",
+                        info.name);
+            }
+
+            break;
+        }
     }
 }
 
@@ -71,7 +86,7 @@ void ChromecastsManager::websocket_subscribe_callback(WebsocketBroadcaster::Mess
     if (it != chromecasts.end()) {
         it->second->set_message_handler(handler);
     } else {
-        logger->warn("(ChromecastsManager) Chromecast {} subscribed but is not known in manager",
+        logger->warn("(ChromecastsManager) Chromecast '{}' subscribed but is not known in manager",
                      name);
     }
 }
@@ -100,7 +115,7 @@ Chromecast::Chromecast(ChromecastsManager& manager_, ChromecastFinder::Chromecas
                        private_tag)
         : manager(manager_), info(info_), strand(manager.io_service), activated(false) {}
 
-void Chromecast::init() {
+void Chromecast::start() {
     std::string* pretty_name = &info.name;
     auto it = info.dns.find("fn");
     if (it != info.dns.end()) {
@@ -119,11 +134,22 @@ void Chromecast::init() {
             this));
 }
 
+void Chromecast::stop() {
+    if (connection) {
+        connection->stop();
+        connection.reset();
+    }
+    if (main_channel) {
+        main_channel.reset();
+    }
+    if (app_channel) {
+        app_channel.reset();
+    }
+}
+
 std::shared_ptr<Chromecast> Chromecast::create(ChromecastsManager& manager_,
                                                ChromecastFinder::ChromecastInfo info_) {
-    auto res = std::make_shared<Chromecast>(manager_, info_, private_tag{});
-    res->init();
-    return res;
+    return std::make_shared<Chromecast>(manager_, info_, private_tag{});
 }
 
 void Chromecast::update_info(ChromecastFinder::ChromecastInfo info_) {
@@ -225,8 +251,8 @@ void Chromecast::handle_stream_start(AppChromecastChannel::Result result) {
     if (result.ok) {
         manager.logger->info("(Chromecast '{}') Receiver started streaming!", info.name);
     } else {
-        manager.logger->error("(Chromecast '{}')_ Receiver failed to start streaming: {}",
-                              info.name, result.message);
+        manager.logger->error("(Chromecast '{}') Receiver failed to start streaming: {}", info.name,
+                              result.message);
     }
 }
 

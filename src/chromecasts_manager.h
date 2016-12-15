@@ -52,9 +52,10 @@ class Chromecast : public std::enable_shared_from_this<Chromecast> {
     static std::shared_ptr<Chromecast> create(ChromecastsManager& manager_,
                                               ChromecastFinder::ChromecastInfo info_);
 
-  private:
-    void init();
+    void start();
+    void stop();
 
+  private:
     template <class F>
     auto weak_wrap(F&& f) {
         return strand.wrap(wrap_weak_ptr(std::forward<F>(f), this));
