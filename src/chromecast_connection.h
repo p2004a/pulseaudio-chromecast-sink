@@ -32,6 +32,16 @@
 
 #include "proto/cast_channel.pb.h"
 
+/* ChromecastConnection is used to communicate with Chromecast device.
+ *
+ * After error you will never receive any notifications and connection will be automatically closed
+ * so you don't have to call stop. When peer will close connection you will receive notification
+ * about it and you don't have to call stop. After calling stop you will receive disconnected or
+ * error or both notifications. You can always call stop.
+ *
+ * Calling stop when it is not necessary results in a warning.
+ */
+
 class ChromecastConnection : public std::enable_shared_from_this<ChromecastConnection> {
   private:
     struct private_tag {};
@@ -71,7 +81,8 @@ class ChromecastConnection : public std::enable_shared_from_this<ChromecastConne
     void handshake_handler(const asio::error_code& error);
     void report_error(std::string message);
     bool is_connection_end(const asio::error_code& error);
-    void read_op_handler_error(const asio::error_code& error);
+    void read_op_handle_error_and_stop(const asio::error_code& error);
+    void shutdown_tcp();
     void shutdown_tls();
     void write_from_queue();
     void read_message();
@@ -80,13 +91,15 @@ class ChromecastConnection : public std::enable_shared_from_this<ChromecastConne
 
     std::shared_ptr<spdlog::logger> logger;
     asio::io_service& io_service;
-    asio::io_service::strand write_strand;
+    asio::io_service::strand strand;
     asio::ssl::context ssl_context;
     asio::ssl::stream<asio::ip::tcp::socket> socket;
     asio::ip::tcp::endpoint endpoint;
     ErrorHandler error_handler = nullptr;
     MessagesHandler messages_handler = nullptr;
     ConnectedHandler connected_handler = nullptr;
+    bool is_stopped = false;
+    bool notify_disconnect = false;
 
     std::deque<std::pair<std::shared_ptr<char>, std::size_t>> write_queue;
     union {

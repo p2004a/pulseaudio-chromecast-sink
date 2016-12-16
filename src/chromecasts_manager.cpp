@@ -190,7 +190,6 @@ void Chromecast::activation_callback(bool activate) {
 
 void Chromecast::connection_error_handler(std::string message) {
     manager.logger->error("(Chromecast '{}') connection error: {}", info.name, message);
-    connection->stop();
     connection.reset();
     main_channel.reset();
     app_channel.reset();
@@ -212,7 +211,6 @@ void Chromecast::connection_connected_handler(bool connected) {
     } else {
         manager.logger->info("(Chromecast '{}') I'm not connected!", info.name);
         // TODO: add support for graceful app unloading
-        connection->stop();
         connection.reset();
         main_channel.reset();
         app_channel.reset();
