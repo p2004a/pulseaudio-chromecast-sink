@@ -35,6 +35,9 @@ ChromecastConnection::ChromecastConnection(asio::io_service& io_service_,
           ssl_context(asio::ssl::context::sslv23_client), socket(io_service, ssl_context),
           endpoint(endpoint_) {
     logger = spdlog::get(logger_name);
+
+    asio::ip::tcp::no_delay option(true);
+    socket.lowest_layer().set_option(option);
 }
 
 std::shared_ptr<ChromecastConnection> ChromecastConnection::create(asio::io_service& io_service,
