@@ -15,6 +15,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <csignal>
 #include <cstring>
 #include <functional>
 #include <iostream>
@@ -23,16 +24,23 @@
 #include <thread>
 #include <vector>
 
-#include <asio.hpp>
+#include <asio/io_service.hpp>
+#include <asio/signal_set.hpp>
 
 #include <spdlog/spdlog.h>
 
+#include <gflags/gflags.h>
+
 #include "chromecasts_manager.h"
 
-int main() {
+int main(int argc, char* argv[]) {
+    gflags::SetUsageMessage("Creates PulseAudio sinks for Chromecast devices");
+    gflags::SetVersionString(PROJECT_VERSION);
+    gflags::ParseCommandLineFlags(&argc, &argv, true);
+
     auto default_logger = spdlog::stdout_logger_mt("default", true /*use color*/);
 
-    default_logger->set_level(spdlog::level::debug);
+    default_logger->set_level(spdlog::level::trace);
 
     asio::io_service io_service;
 
