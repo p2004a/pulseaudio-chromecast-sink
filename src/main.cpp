@@ -15,6 +15,8 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+#include <unistd.h>
+
 #include <csignal>
 #include <cstring>
 #include <functional>
@@ -33,12 +35,30 @@
 
 #include "chromecasts_manager.h"
 
+DEFINE_string(stdout_log_color, "auto", "color stdout log output: auto, always or never");
+
+std::shared_ptr<spdlog::logger> get_stdout_logger() {
+    bool color;
+    if (FLAGS_stdout_log_color == "always") {
+        color = true;
+    } else if (FLAGS_stdout_log_color == "never") {
+        color = false;
+    } else {
+        if (FLAGS_stdout_log_color != "auto") {
+            std::cerr << "Unexpected logger color '" << FLAGS_stdout_log_color
+                      << "', using default 'auto'" << std::endl;
+        }
+        color = isatty(STDOUT_FILENO);
+    }
+    return spdlog::stdout_logger_mt("default", color);
+}
+
 int main(int argc, char* argv[]) {
     gflags::SetUsageMessage("Creates PulseAudio sinks for Chromecast devices");
     gflags::SetVersionString(PROJECT_VERSION);
     gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-    auto default_logger = spdlog::stdout_logger_mt("default", true /*use color*/);
+    auto default_logger = get_stdout_logger();
 
     default_logger->set_level(spdlog::level::trace);
 
