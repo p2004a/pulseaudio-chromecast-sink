@@ -17,8 +17,12 @@
 
 #include <functional>
 
+#include <gflags/gflags.h>
+
 #include "chromecasts_manager.h"
 #include "network_address.h"
+
+DEFINE_string(chromecast_app_id, "10600AB8", "id of the app to load to Chromecast");
 
 ChromecastsManager::ChromecastsManager(asio::io_service& io_service_, const char* logger_name)
         : io_service(io_service_), chromecasts_strand(io_service),
@@ -206,8 +210,8 @@ void Chromecast::connection_connected_handler(bool connected) {
 
         main_channel->start();
 
-        // TODO: move appId to config
-        main_channel->load_app("10600AB8", mem_weak_wrap(&Chromecast::handle_app_load));
+        main_channel->load_app(FLAGS_chromecast_app_id,
+                               mem_weak_wrap(&Chromecast::handle_app_load));
     } else {
         manager.logger->info("(Chromecast '{}') I'm not connected!", info.name);
         // TODO: add support for graceful app unloading
