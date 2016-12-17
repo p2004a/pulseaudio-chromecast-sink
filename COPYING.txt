@@ -7,3 +7,4 @@ under their own independent licenses stated in their corresponding directories.
 Moreover all below files are licenses under different licenses:
 
  - proto/cast_channel.proto: license in file cast_channel_proto_LICENSE.txt
+ - pre-commit.py: MIT License

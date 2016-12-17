@@ -29,6 +29,26 @@ The build process also requires `protoc` protobuf compiler to be installed.
     $ cmake .. -DCMAKE_BUILD_TYPE=Release
     $ make -j
 
+Development
+-----------
+
+### Code style
+
+The code style is defined in [.clang-format](./.clang-format) file. All code
+should be formatted using clang-format with that style file.
+
+To format all code in this repository you can run provided script:
+
+    $ ./format-all.sh
+
+To make sure that you never commit incorrectly formatted code you can set up
+simple [pre-commit hook](https://git-scm.com/book/en/v2/Customizing-Git-Git-Hooks)
+script from this repository:
+
+    $ ln -s ../../pre-commit.py .git/hooks/pre-commit
+
+The script requires python >= 3.4 installed in your system.
+
 License
 -------
 
