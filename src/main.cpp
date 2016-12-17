@@ -21,7 +21,6 @@
 #include <cstring>
 #include <functional>
 #include <iostream>
-#include <stdexcept>
 #include <string>
 #include <thread>
 #include <vector>
@@ -36,6 +35,7 @@
 #include "chromecasts_manager.h"
 
 DEFINE_string(stdout_log_color, "auto", "color stdout log output: auto, always or never");
+DEFINE_string(log_level, "info", "logger log level: trace, debug, info, warn, err, critical");
 
 std::shared_ptr<spdlog::logger> get_stdout_logger() {
     bool color;
@@ -53,6 +53,27 @@ std::shared_ptr<spdlog::logger> get_stdout_logger() {
     return spdlog::stdout_logger_mt("default", color);
 }
 
+spdlog::level::level_enum get_log_level() {
+    using namespace spdlog::level;
+    if (FLAGS_log_level == "trace") {
+        return trace;
+    } else if (FLAGS_log_level == "debug") {
+        return debug;
+    } else if (FLAGS_log_level == "info") {
+        return info;
+    } else if (FLAGS_log_level == "warn") {
+        return warn;
+    } else if (FLAGS_log_level == "err") {
+        return err;
+    } else if (FLAGS_log_level == "critical") {
+        return critical;
+    } else {
+        std::cerr << "Unexpected log_level '" << FLAGS_log_level << "', using default 'info'"
+                  << std::endl;
+        return info;
+    }
+}
+
 int main(int argc, char* argv[]) {
     gflags::SetUsageMessage("Creates PulseAudio sinks for Chromecast devices");
     gflags::SetVersionString(PROJECT_VERSION);
@@ -60,7 +81,7 @@ int main(int argc, char* argv[]) {
 
     auto default_logger = get_stdout_logger();
 
-    default_logger->set_level(spdlog::level::trace);
+    default_logger->set_level(get_log_level());
 
     asio::io_service io_service;
 
