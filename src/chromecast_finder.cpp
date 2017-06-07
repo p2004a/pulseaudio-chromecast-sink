@@ -218,7 +218,6 @@ void ChromecastFinder::resolve_callback(AvahiServiceResolver* r, AvahiIfIndex in
                     "{} protocol: "
                     "{}: {}",
                     name, interface, protocol, cf->get_avahi_error());
-            cf->remove_resolver(ResolverId(interface, protocol, name));
             break;
 
         case AVAHI_RESOLVER_FOUND: {
